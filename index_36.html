@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>เช็คสต็อกเวชภัณฑ์ | ห้องคลอด รพ.สะบ้าย้อย</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: #0D0D0D; }
+  body { font-family: 'Noto Sans Thai', system-ui, sans-serif; overscroll-behavior: none; }
+  #root { height: 100%; max-width: 480px; margin: 0 auto; position: relative; }
+  input { font-family: inherit; }
+  button { font-family: inherit; }
+  ::-webkit-scrollbar { width: 0; height: 0; }
+  @keyframes popIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes bump { 0% { transform: scale(1); } 40% { transform: scale(1.15); } 100% { transform: scale(1); } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useCallback, useRef } = React;
+
+const C = {
+  bg: "#0D0D0D", card: "#1A1A1A", cardEl: "#222222", border: "#2E2E2E",
+  orange: "#E8673A", orangeD: "#C5542C", orangeL: "#F0935F",
+  text: "#FFFFFF", textSub: "#9A9A9A", textMute: "#5A5A5A",
+  success: "#3DB87A", warning: "#F0A030", danger: "#E84040",
+};
+
+// ── Data ──────────────────────────────────────────────────────────
+const RAW_FAIYAKAN = [
+  { name: "ET-Tube No.2.5 (รถ Emer+สต๊อก)", unit: "set", req: 5 },
+  { name: "ET-Tube No.3 (รถ Emer+สต๊อก)", unit: "set", req: 10 },
+  { name: "ET-Tube No.3.5 (รถ Emer+สต๊อก)", unit: "set", req: 10 },
+  { name: "ET-Tube No.4 (รถ Emer+สต๊อก)", unit: "set", req: 2 },
+  { name: "ET-Tube No.7 (Emer ผู้หญิง)", unit: "set", req: 3 },
+  { name: "ET-Tube No.7.5 (Emer ผู้หญิง)", unit: "set", req: 3 },
+  { name: "Suction tube No.6", unit: "set", req: 10 },
+  { name: "Suction tube No.8", unit: "set", req: 10 },
+  { name: "Suction tube No.10", unit: "set", req: 10 },
+  { name: "Suction tube No.12", unit: "set", req: 5 },
+  { name: "Suction tube No.14", unit: "set", req: 5 },
+  { name: "Syringe 1 ml. BD", unit: "กล่อง", req: 2 },
+  { name: "Syringe 3 ml.", unit: "กล่อง", req: 2 },
+  { name: "Syringe 5 ml.", unit: "กล่อง", req: 1 },
+  { name: "Syringe 10 ml.", unit: "กล่อง", req: 1 },
+  { name: "Syringe 20 ml.", unit: "กล่อง", req: 1 },
+  { name: "Medicut No.18", unit: "กล่อง", req: 1 },
+  { name: "Medicut No.20", unit: "กล่อง", req: 2 },
+  { name: "Medicut No.22", unit: "กล่อง", req: 1 },
+  { name: "Medicut No.24", unit: "กล่อง", req: 1 },
+  { name: "Needle No.18 × 1/2 นิ้ว", unit: "กล่อง", req: 1 },
+  { name: "Needle No.21 × 1 1/2 นิ้ว", unit: "กล่อง", req: 1 },
+  { name: "Needle No.24 ขนาด 1.5 นิ้ว", unit: "กล่อง", req: 2 },
+  { name: "Needle No.25 ขนาด 1 นิ้ว", unit: "กล่อง", req: 1 },
+  { name: "Set IV child (เด็ก)", unit: "กล่อง", req: 1 },
+  { name: "Set IV adult (ผู้ใหญ่)", unit: "กล่อง", req: 1 },
+  { name: "Extension tube", unit: "set", req: 100 },
+  { name: "Heparin plug", unit: "กล่อง", req: 1 },
+  { name: "K–Y jelly", unit: "หลอด", req: 10 },
+  { name: "Plaster 3M 10×10", unit: "ม้วน", req: 1 },
+  { name: "Tensoplast (ขาวขุ่น)", unit: "กล่อง", req: 1 },
+  { name: "ป้ายข้อมือเด็ก (สีชมพู)", unit: "กล่อง", req: 1 },
+  { name: "ป้ายข้อมือเด็ก (สีฟ้า)", unit: "กล่อง", req: 1 },
+  { name: "ป้ายข้อมือผู้ใหญ่", unit: "กล่อง", req: 1 },
+  { name: "Tegaderm Film 3M", unit: "กล่อง", req: 1 },
+  { name: "ถุงตวงเลือด", unit: "set", req: 50 },
+  { name: "Top Gauze ขนาด 3×6", unit: "set", req: 20 },
+  { name: "Chromic catgut 2.0 HR40", unit: "กล่อง", req: 3 },
+  { name: "Urine bag 2000 cc.", unit: "set", req: 15 },
+  { name: "Foley cath สวนทิ้ง No.14", unit: "กล่อง", req: 4 },
+  { name: "ถุงมือ Disposable No.S", unit: "กล่อง", req: 4 },
+  { name: "ถุงมือ Disposable No.M", unit: "กล่อง", req: 4 },
+  { name: "ถุงมือล้วงรก No.S", unit: "คู่", req: 3 },
+  { name: "ถุงมือล้วงรก No.M", unit: "คู่", req: 3 },
+  { name: "ถุงมือ Sterile No.6.5", unit: "กล่อง", req: 5 },
+  { name: "ถุงมือ Sterile No.7", unit: "กล่อง", req: 5 },
+  { name: "ถุงมือ Sterile No.7.5", unit: "กล่อง", req: 3 },
+  { name: "สำลีก้อนเล็ก 5 ก้อน S", unit: "ห่อ", req: 4 },
+  { name: "กระดาษ NST (สีเขียว)", unit: "pack", req: 5 },
+  { name: "กระดาษ NST (สีแดง)", unit: "pack", req: 5 },
+  { name: "กระดาษ U/S HPD110HG", unit: "ม้วน", req: 1 },
+  { name: "Mask Dispose", unit: "กล่อง", req: 8 },
+  { name: "หมวก Dispose", unit: "ห่อ", req: 3 },
+  { name: "T–way", unit: "กล่อง", req: 1 },
+  { name: "สาย OQ No.6 ขนาด 50 cm", unit: "set", req: 20 },
+  { name: "สาย OQ No.8 ขนาด 50 cm", unit: "set", req: 20 },
+  { name: "Transpore 1/2 นิ้ว", unit: "กล่อง", req: 1 },
+  { name: "Transpore 1 นิ้ว", unit: "กล่อง", req: 1 },
+  { name: "เอื้ยมพลาสติก", unit: "pack", req: 1 },
+  { name: "Jully U/S", unit: "แกลลอน", req: 1 },
+  { name: "สำลีแอลกอฮอล์", unit: "ลัง", req: 1 },
+  { name: "สาย UVC เบอร์ 5", unit: "อัน", req: 5 },
+  { name: "กระป๋องใส่เข็ม", unit: "กระป๋อง", req: 10 },
+  { name: "ไม้พันสำลีสั้น", unit: "set", req: 10 },
+  { name: "ไม้พันสำลียาว No.M", unit: "set", req: 10 },
+  { name: "Face shield", unit: "อัน", req: 10 },
+  { name: "แว่นตา", unit: "อัน", req: 10 },
+  { name: "ชุด PPE", unit: "set", req: 10 },
+  { name: "เอี๊ยมพลาสติกสีฟ้า/ถุงเท้า", unit: "set", req: 10 },
+  { name: "หมวกยีราฟ", unit: "set", req: 10 },
+  { name: "Mask N95", unit: "set", req: 10 },
+  { name: "Red Dot เด็ก", unit: "ห่อ", req: 1 },
+  { name: "Red Dot ผู้ใหญ่", unit: "ห่อ", req: 1 },
+  { name: "Micropore No.0.5 นิ้ว", unit: "กล่อง", req: 1 },
+  { name: "Micropore No.1 นิ้ว", unit: "กล่อง", req: 1 },
+];
+const RAW_PASSADU = [
+  { name: "กระดาษถ่ายเอกสาร A4", unit: "รีม", req: 5 },
+  { name: "ปากกาลูกลื่น (สีน้ำเงิน)", unit: "แท่ง", req: 12 },
+  { name: "ปากกาลูกลื่น (สีแดง)", unit: "แท่ง", req: 6 },
+  { name: "แฟ้มเสนอเอกสาร", unit: "อัน", req: 10 },
+  { name: "คลิปหนีบกระดาษ", unit: "กล่อง", req: 3 },
+  { name: "เทปกาว", unit: "ม้วน", req: 5 },
+  { name: "กรรไกร", unit: "อัน", req: 3 },
+  { name: "แสตมป์ยาง", unit: "อัน", req: 2 },
+  { name: "หมึกแสตมป์", unit: "ขวด", req: 2 },
+  { name: "แบบฟอร์มใบสั่งยา", unit: "เล่ม", req: 10 },
+  { name: "แบบฟอร์มบันทึกทางการพยาบาล", unit: "เล่ม", req: 10 },
+  { name: "สมุดบันทึก", unit: "เล่ม", req: 5 },
+];
+const RAW_LAB = [
+  { name: "Urine strip (10 parameter)", unit: "กล่อง", req: 5 },
+  { name: "Glucose test strip", unit: "กล่อง", req: 3 },
+  { name: "Blood collection tube EDTA 3ml", unit: "หลอด", req: 50 },
+  { name: "Blood collection tube plain 5ml", unit: "หลอด", req: 30 },
+  { name: "Blood collection tube SST 5ml", unit: "หลอด", req: 30 },
+  { name: "Vacutainer holder", unit: "อัน", req: 5 },
+  { name: "Lancet (เข็มเจาะเลือดปลายนิ้ว)", unit: "กล่อง", req: 3 },
+  { name: "ถ้วยปัสสาวะ", unit: "อัน", req: 50 },
+  { name: "ขวดเพาะเชื้อ aerobic", unit: "ขวด", req: 10 },
+  { name: "สไลด์แก้ว", unit: "กล่อง", req: 2 },
+  { name: "Cover glass", unit: "กล่อง", req: 2 },
+  { name: "กระดาษกรอง", unit: "แผ่น", req: 20 },
+];
+
+const buildItems = (raw, cat) => raw.map((r, i) => ({ id: cat + "-" + i, cat, name: r.name, unit: r.unit, req: r.req, count: 0 }));
+const ALL_ITEMS = [...buildItems(RAW_FAIYAKAN, "ฝ่ายการ"), ...buildItems(RAW_PASSADU, "พัสดุ"), ...buildItems(RAW_LAB, "Lab")];
+
+const CAT_META = {
+  "ฝ่ายการ": { label: "ฝ่ายการฯ", desc: "เวชภัณฑ์และวัสดุการแพทย์", color: C.orange, icon: "M9 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2h-4M9 3v4a1 1 0 001 1h4a1 1 0 001-1V3M9 3h6M12 11v6M9 14h6" },
+  "พัสดุ": { label: "พัสดุ", desc: "วัสดุสำนักงานและครุภัณฑ์", color: "#3B82C4", icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" },
+  "Lab": { label: "Lab", desc: "อุปกรณ์ห้องปฏิบัติการ", color: "#8B5C9E", icon: "M9 3v6.5L4.5 17a2 2 0 001.8 3h11.4a2 2 0 001.8-3L15 9.5V3M8 3h8M9 14h6" },
+};
+const CATS = ["ฝ่ายการ", "พัสดุ", "Lab"];
+const STORAGE_KEY = "withdraw-app-v4";
+
+const getStatus = (count, req) => count >= req ? "ok" : count > 0 ? "low" : "empty";
+const loadSaved = () => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); } catch { return {}; } };
+const saveData = (obj) => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(obj)); } catch {} };
+
+// ── Hexagon helpers ───────────────────────────────────────────────
+const hexPoints = (cx, cy, r) => Array.from({length:6},(_, k) => { const a=(Math.PI/3)*k-Math.PI/6; return (cx+r*Math.cos(a))+","+(cy+r*Math.sin(a)); }).join(" ");
+const HexBg = () => (
+  <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0.06, pointerEvents: "none" }} viewBox="0 0 400 700" preserveAspectRatio="xMidYMid slice">
+    {[[60,80,70],[160,50,50],[300,100,80],[20,200,55],[330,220,65],[100,320,75],[260,340,45],[40,450,60],[320,420,70],[150,530,55],[280,560,45],[60,630,65]].map(([x,y,r],i) => (
+      <polygon key={i} points={hexPoints(x,y,r)} fill={i%3===0?C.orange:"#fff"} opacity={i%3===0?1:0.5} />
+    ))}
+  </svg>
+);
+const HexIcon = ({ size = 44, color = C.orange }) => (
+  <svg width={size} height={size} viewBox={"0 0 "+size+" "+size}><polygon points={hexPoints(size/2,size/2,size/2-2)} fill={color} /></svg>
+);
+
+// ── Count Modal (big tap buttons) ─────────────────────────────────
+function CountModal({ item, onClose, onChange }) {
+  if (!item) return null;
+  const st = getStatus(item.count, item.req);
+  const need = Math.max(0, item.req - item.count);
+  const stColor = st === "empty" ? C.danger : st === "low" ? C.warning : C.success;
+  const [bump, setBump] = useState(false);
+  const triggerBump = () => { setBump(true); setTimeout(() => setBump(false), 220); };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 100, animation: "fadeIn 0.15s ease" }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 480, background: C.card, borderRadius: "24px 24px 0 0", padding: "10px 20px 32px", border: "1px solid " + C.border, borderBottom: "none", animation: "popIn 0.22s cubic-bezier(0.34,1.56,0.64,1)" }}>
+        {/* Grabber */}
+        <div style={{ width: 40, height: 4, background: C.border, borderRadius: 4, margin: "6px auto 18px" }} />
+
+        {/* Item title */}
+        <div style={{ textAlign: "center", marginBottom: 4 }}>
+          <div style={{ color: C.text, fontSize: 19, fontWeight: 600, lineHeight: 1.3 }}>{item.name}</div>
+          <div style={{ color: C.textMute, fontSize: 12, marginTop: 4 }}>{CAT_META[item.cat].label} · ต้องมีในคลัง {item.req} {item.unit}</div>
+        </div>
+
+        {/* Status */}
+        <div style={{ display: "flex", justifyContent: "center", margin: "14px 0 8px" }}>
+          <span style={{ background: stColor + "22", color: stColor, fontSize: 13, fontWeight: 700, padding: "5px 16px", borderRadius: 20 }}>
+            {st === "ok" ? "✓ ครบตามกำหนด" : st === "low" ? "! ยังไม่พอ" : "✕ หมด/ยังไม่นับ"}
+          </span>
+        </div>
+
+        {/* Big counter */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 20, margin: "18px 0 8px" }}>
+          <button onClick={() => { onChange(item.id, -1); triggerBump(); }}
+            style={{ width: 74, height: 74, borderRadius: 22, border: "none", background: C.cardEl, color: C.text, fontSize: 38, fontWeight: 300, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 14px rgba(0,0,0,0.3)" }}>−</button>
+          <div style={{ minWidth: 100, textAlign: "center" }}>
+            <div style={{ color: C.text, fontSize: 56, fontWeight: 700, lineHeight: 1, animation: bump ? "bump 0.22s ease" : "none" }}>{item.count}</div>
+            <div style={{ color: C.textMute, fontSize: 14, marginTop: 4 }}>{item.unit}</div>
+          </div>
+          <button onClick={() => { onChange(item.id, 1); triggerBump(); }}
+            style={{ width: 74, height: 74, borderRadius: 22, border: "none", background: C.orange, color: "#fff", fontSize: 38, fontWeight: 300, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 18px " + C.orange + "66" }}>+</button>
+        </div>
+
+        {/* Quick add buttons */}
+        <div style={{ display: "flex", gap: 8, justifyContent: "center", margin: "16px 0 18px" }}>
+          {[5, 10].map(n => (
+            <button key={"+"+n} onClick={() => { onChange(item.id, n); triggerBump(); }}
+              style={{ padding: "8px 18px", borderRadius: 12, border: "1px solid " + C.border, background: C.cardEl, color: C.orangeL, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>+{n}</button>
+          ))}
+          <button onClick={() => { onChange(item.id, "zero"); triggerBump(); }}
+            style={{ padding: "8px 18px", borderRadius: 12, border: "1px solid " + C.border, background: C.cardEl, color: C.textSub, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>ล้าง 0</button>
+        </div>
+
+        {/* Need to withdraw */}
+        <div style={{ background: need > 0 ? C.orange + "18" : C.success + "18", borderRadius: 14, padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <span style={{ color: need > 0 ? C.orangeL : C.success, fontSize: 14, fontWeight: 500 }}>{need > 0 ? "ต้องเบิกเพิ่ม" : "ไม่ต้องเบิก"}</span>
+          <span style={{ color: need > 0 ? C.orange : C.success, fontSize: 22, fontWeight: 700 }}>{need} <span style={{ fontSize: 13 }}>{item.unit}</span></span>
+        </div>
+
+        <button onClick={onClose} style={{ width: "100%", padding: "14px", borderRadius: 14, border: "none", background: C.cardEl, color: C.text, fontSize: 15, fontWeight: 600, cursor: "pointer" }}>เสร็จสิ้น</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Main App ──────────────────────────────────────────────────────
+function App() {
+  const [page, setPage] = useState("home"); // home | pick | items
+  const [activeCat, setActiveCat] = useState(null);
+  const [items, setItems] = useState(() => {
+    const saved = loadSaved();
+    return ALL_ITEMS.map(item => ({ ...item, count: saved[item.id] ?? 0 }));
+  });
+  const [search, setSearch] = useState("");
+  const [modalId, setModalId] = useState(null);
+
+  const persist = useCallback((list) => { const obj = {}; list.forEach(it => { obj[it.id] = it.count; }); saveData(obj); }, []);
+
+  const changeCount = useCallback((id, delta) => {
+    setItems(prev => {
+      const next = prev.map(it => {
+        if (it.id !== id) return it;
+        if (delta === "zero") return { ...it, count: 0 };
+        return { ...it, count: Math.max(0, it.count + delta) };
+      });
+      persist(next); return next;
+    });
+  }, [persist]);
+
+  const removeItem = useCallback((id) => { setItems(prev => { const next = prev.filter(it => it.id !== id); persist(next); return next; }); }, [persist]);
+  const resetCat = useCallback((cat) => { setItems(prev => { const next = prev.map(it => it.cat === cat ? { ...it, count: 0 } : it); persist(next); return next; }); }, [persist]);
+
+  const allNeed = items.filter(it => it.count < it.req).length;
+  const modalItem = modalId ? items.find(it => it.id === modalId) : null;
+
+  const exportCSV = (cat) => {
+    const list = items.filter(it => it.cat === cat);
+    let csv = "\uFEFF";
+    csv += "หน่วยงาน,ห้องคลอด รพ.สะบ้าย้อย\n";
+    csv += "หมวด," + CAT_META[cat].label + "\n";
+    csv += "วันที่ส่งออก," + new Date().toLocaleString("th-TH") + "\n\n";
+    csv += "รายการ,หน่วย,ต้องมี,นับได้,ต้องเบิก,สถานะ\n";
+    list.forEach(it => {
+      const need = Math.max(0, it.req - it.count);
+      const st = getStatus(it.count, it.req) === "ok" ? "ครบ" : it.count > 0 ? "ไม่พอ" : "หมด";
+      csv += ['"' + it.name + '"', it.unit, it.req, it.count, need, st].join(",") + "\n";
+    });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "เบิกของ_" + CAT_META[cat].label + "_" + new Date().toISOString().slice(0,10) + ".csv";
+    a.click(); URL.revokeObjectURL(url);
+  };
+
+  // ═══ HOME ═══════════════════════════════════════════════════════
+  if (page === "home") return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: C.bg, position: "relative", overflow: "hidden" }}>
+      <HexBg />
+      <div style={{ position: "absolute", top: -20, right: -20, opacity: 0.4 }}><HexIcon size={110} color={C.orange} /></div>
+      <div style={{ position: "absolute", top: 70, right: 46, opacity: 0.2 }}><HexIcon size={60} color={C.orange} /></div>
+      <div style={{ position: "absolute", bottom: -30, left: -30, opacity: 0.28 }}><HexIcon size={120} color={C.orange} /></div>
+      <div style={{ position: "absolute", bottom: 90, left: 54, opacity: 0.13 }}><HexIcon size={60} color="#fff" /></div>
+
+      {/* Top label */}
+      <div style={{ padding: "48px 36px 0", zIndex: 1 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <HexIcon size={26} color={C.orange} />
+          <span style={{ color: C.textSub, fontSize: 12, letterSpacing: "0.12em" }}>ห้องคลอด โรงพยาบาลสะบ้าย้อย</span>
+        </div>
+      </div>
+
+      {/* Center content */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "0 36px", zIndex: 1 }}>
+        <div style={{ textAlign: "center", marginBottom: 40 }}>
+          <div style={{ color: C.text, fontSize: 30, fontWeight: 700, lineHeight: 1.25 }}>ระบบเช็คสต็อก</div>
+          <div style={{ color: C.orange, fontSize: 30, fontWeight: 700, lineHeight: 1.25 }}>เวชภัณฑ์</div>
+        </div>
+
+        {/* Big hexagon button */}
+        <button onClick={() => setPage("pick")} aria-label="เริ่มต้นเบิกของ"
+          style={{ position: "relative", width: 200, height: 220, border: "none", background: "none", cursor: "pointer", padding: 0 }}>
+          <svg width="200" height="220" viewBox="0 0 200 220" style={{ filter: "drop-shadow(0 12px 40px " + C.orange + "66)" }}>
+            <defs>
+              <linearGradient id="hexgrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={C.orangeL} />
+                <stop offset="100%" stopColor={C.orangeD} />
+              </linearGradient>
+            </defs>
+            <polygon points="100,10 185,60 185,160 100,210 15,160 15,60" fill="url(#hexgrad)" />
+          </svg>
+          <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, pointerEvents: "none" }}>
+            <div style={{ width: 56, height: 56, borderRadius: "50%", background: "rgba(255,255,255,0.22)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width="30" height="30" fill="none" stroke="#fff" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" strokeLinecap="round" /></svg>
+            </div>
+            <span style={{ color: "#fff", fontSize: 17, fontWeight: 700 }}>เริ่มต้นเบิกของ</span>
+          </div>
+        </button>
+        <div style={{ color: C.textMute, fontSize: 12, marginTop: 24, textAlign: "center" }}>แตะปุ่มเพื่อเลือกหมวดและเริ่มนับสต็อก</div>
+      </div>
+
+      {allNeed > 0 && (
+        <div style={{ margin: "0 24px 32px", background: C.card, borderRadius: 16, padding: "14px 18px", border: "1px solid " + C.border, display: "flex", alignItems: "center", gap: 12, zIndex: 1 }}>
+          <div style={{ width: 34, height: 34, background: C.danger + "22", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <svg width="17" height="17" fill="none" stroke={C.danger} strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" strokeLinecap="round" /></svg>
+          </div>
+          <div>
+            <div style={{ color: C.text, fontSize: 13, fontWeight: 500 }}>มีรายการที่ต้องเบิก</div>
+            <div style={{ color: C.danger, fontSize: 12 }}>{allNeed} รายการยังไม่ครบตามกำหนด</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  // ═══ PICK CATEGORY ══════════════════════════════════════════════
+  if (page === "pick") return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: C.bg, position: "relative", overflow: "hidden" }}>
+      <HexBg />
+      <div style={{ padding: "18px 18px 8px", zIndex: 1 }}>
+        <button onClick={() => setPage("home")} style={{ width: 38, height: 38, background: C.cardEl, border: "none", borderRadius: 11, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <svg width="17" height="17" fill="none" stroke={C.text} strokeWidth="2" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        </button>
+      </div>
+
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 24px 40px", zIndex: 1 }}>
+        <div style={{ marginBottom: 28, textAlign: "center" }}>
+          <div style={{ color: C.text, fontSize: 24, fontWeight: 700 }}>เลือกหมวดการเบิก</div>
+          <div style={{ color: C.textMute, fontSize: 13, marginTop: 6 }}>เลือกหมวดที่ต้องการทำรายการ</div>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {CATS.map(cat => {
+            const meta = CAT_META[cat];
+            const list = items.filter(it => it.cat === cat);
+            const need = list.filter(it => it.count < it.req).length;
+            return (
+              <button key={cat} onClick={() => { setActiveCat(cat); setSearch(""); setPage("items"); }}
+                style={{ display: "flex", alignItems: "center", gap: 16, background: C.card, border: "1px solid " + C.border, borderLeft: "4px solid " + meta.color, borderRadius: 18, padding: "18px 20px", cursor: "pointer", textAlign: "left" }}>
+                <div style={{ width: 52, height: 52, borderRadius: 15, background: meta.color + "1E", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <svg width="26" height="26" fill="none" stroke={meta.color} strokeWidth="1.8" viewBox="0 0 24 24"><path d={meta.icon} strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ color: C.text, fontSize: 18, fontWeight: 600 }}>{meta.label}</div>
+                  <div style={{ color: C.textMute, fontSize: 12, marginTop: 2 }}>{meta.desc}</div>
+                  <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+                    <span style={{ color: C.textSub, fontSize: 11 }}>{list.length} รายการ</span>
+                    {need > 0 && <span style={{ color: C.danger, fontSize: 11, fontWeight: 600 }}>· ต้องเบิก {need}</span>}
+                  </div>
+                </div>
+                <svg width="20" height="20" fill="none" stroke={C.textMute} strokeWidth="2" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+
+  // ═══ ITEMS (per category) ═══════════════════════════════════════
+  const meta = CAT_META[activeCat];
+  const catItems = items.filter(it => it.cat === activeCat);
+  const filtered = catItems.filter(it => it.name.toLowerCase().includes(search.toLowerCase()));
+  const totalCat = catItems.length;
+  const needCat = catItems.filter(it => it.count < it.req).length;
+  const doneCat = totalCat - needCat;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: C.bg, overflowY: "auto" }}>
+      {/* Header */}
+      <div style={{ background: C.card, borderBottom: "1px solid " + C.border, borderTop: "3px solid " + meta.color, padding: "14px 18px", flexShrink: 0, position: "sticky", top: 0, zIndex: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <button onClick={() => { setPage("pick"); setSearch(""); }} style={{ width: 36, height: 36, background: C.cardEl, border: "none", borderRadius: 10, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width="16" height="16" fill="none" stroke={C.text} strokeWidth="2" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </button>
+            <div>
+              <div style={{ color: C.text, fontWeight: 600, fontSize: 15, display: "flex", alignItems: "center", gap: 7 }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: meta.color, display: "inline-block" }} />{meta.label}
+              </div>
+              <div style={{ color: C.textSub, fontSize: 11, marginTop: 1 }}>{totalCat} รายการ{needCat > 0 && <span style={{ color: C.danger, marginLeft: 6 }}>· ต้องเบิก {needCat}</span>}</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={() => exportCSV(activeCat)} style={{ padding: "6px 12px", background: C.cardEl, border: "1px solid " + C.border, borderRadius: 8, cursor: "pointer", color: meta.color, fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
+              <svg width="12" height="12" fill="none" stroke={meta.color} strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              ส่งออก
+            </button>
+            <button onClick={() => resetCat(activeCat)} style={{ padding: "6px 12px", background: C.cardEl, border: "1px solid " + C.border, borderRadius: 8, cursor: "pointer", color: C.textSub, fontSize: 11 }}>รีเซ็ต</button>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, background: C.cardEl, borderRadius: 10, padding: "8px 12px", border: "1px solid " + C.border }}>
+          <svg width="14" height="14" fill="none" stroke={C.textMute} strokeWidth="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" strokeLinecap="round" /></svg>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder={"ค้นหาใน " + meta.label + "..."} style={{ flex: 1, background: "none", border: "none", outline: "none", color: C.text, fontSize: 13 }} />
+        </div>
+      </div>
+
+      {/* Summary banner */}
+      {needCat > 0 && (
+        <div style={{ margin: "12px 16px 0", background: "linear-gradient(135deg, " + meta.color + "CC, " + meta.color + "99)", borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 10 }}>
+          <svg width="18" height="18" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          <div style={{ flex: 1, color: "#fff", fontSize: 12, fontWeight: 600 }}>สรุปยอดที่ต้องเบิก · {meta.label}</div>
+          <div style={{ background: "rgba(0,0,0,0.28)", color: "#fff", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>ต้องเบิก {needCat}</div>
+        </div>
+      )}
+
+      {/* Progress */}
+      <div style={{ padding: "10px 16px 4px", display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ flex: 1, height: 4, background: C.cardEl, borderRadius: 2, overflow: "hidden" }}>
+          <div style={{ height: "100%", width: (totalCat ? (doneCat/totalCat)*100 : 0) + "%", background: meta.color, borderRadius: 2, transition: "width 0.3s" }} />
+        </div>
+        <span style={{ color: C.textMute, fontSize: 10 }}>{doneCat}/{totalCat}</span>
+      </div>
+
+      {/* Items */}
+      <div style={{ flex: 1, padding: "8px 16px 24px" }}>
+        {filtered.length === 0 ? (
+          <div style={{ textAlign: "center", color: C.textMute, fontSize: 13, padding: "40px 0" }}>ไม่พบรายการ</div>
+        ) : filtered.map(item => {
+          const st = getStatus(item.count, item.req);
+          const pct = Math.min(1, item.count / item.req);
+          const need = Math.max(0, item.req - item.count);
+          const stColor = st === "empty" ? C.danger : st === "low" ? C.warning : C.success;
+          return (
+            <div key={item.id} onClick={() => setModalId(item.id)}
+              style={{ background: C.card, borderRadius: 14, padding: "14px 16px", marginBottom: 10, border: "1px solid " + (st === "empty" ? C.danger + "40" : st === "low" ? C.warning + "30" : C.border), cursor: "pointer" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
+                <div style={{ flex: 1, paddingRight: 8 }}>
+                  <div style={{ color: C.text, fontSize: 14, fontWeight: 500, lineHeight: 1.4 }}>{item.name}</div>
+                  <div style={{ color: C.textMute, fontSize: 11, marginTop: 3 }}>{meta.label} · ต้องมีในคลัง {item.req} {item.unit}</div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ background: stColor + "22", color: stColor, fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>{st === "ok" ? "ครบ" : st === "low" ? "ไม่พอ" : "หมด"}</span>
+                  <button onClick={(e) => { e.stopPropagation(); removeItem(item.id); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, color: C.textMute }}>
+                    <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2" /></svg>
+                  </button>
+                </div>
+              </div>
+              <div style={{ height: 3, background: C.cardEl, borderRadius: 2, marginBottom: 12, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: (pct*100) + "%", background: stColor, borderRadius: 2, transition: "width 0.2s" }} />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <button onClick={(e) => { e.stopPropagation(); changeCount(item.id, -1); }} style={{ width: 34, height: 34, borderRadius: 10, border: "1px solid " + C.border, background: C.cardEl, color: C.text, fontSize: 18, cursor: "pointer" }}>−</button>
+                  <span style={{ color: C.text, fontSize: 16, fontWeight: 600, minWidth: 24, textAlign: "center" }}>{item.count}</span>
+                  <button onClick={(e) => { e.stopPropagation(); changeCount(item.id, 1); }} style={{ width: 34, height: 34, borderRadius: 10, border: "1px solid " + C.border, background: C.cardEl, color: C.text, fontSize: 18, cursor: "pointer" }}>+</button>
+                  <span style={{ color: C.textMute, fontSize: 12 }}>{item.unit}</span>
+                </div>
+                {need > 0 && (
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ color: C.textMute, fontSize: 10 }}>ต้องเบิก</div>
+                    <div style={{ color: meta.color, fontSize: 16, fontWeight: 700 }}>{need} <span style={{ fontSize: 11 }}>{item.unit}</span></div>
+                  </div>
+                )}
+              </div>
+              <div style={{ textAlign: "center", marginTop: 8, color: C.textMute, fontSize: 10 }}>แตะที่การ์ดเพื่อเปิดปุ่มนับใหญ่</div>
+            </div>
+          );
+        })}
+      </div>
+
+      <CountModal item={modalItem} onClose={() => setModalId(null)} onChange={changeCount} />
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
