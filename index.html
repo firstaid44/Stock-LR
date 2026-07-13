@@ -223,10 +223,23 @@ function CountModal({ item, lastW, onClose, onChange }) {
           <div style={{ color: C.textMute, fontSize: 12, marginTop: 4 }}>{CAT_META[item.cat].label} · ต้องมีในคลัง {item.req} {item.unit}</div>
         </div>
         {lastW && (
-          <div style={{ background: C.cardEl, borderRadius: 10, padding: "8px 14px", margin: "12px 0 4px", textAlign: "center" }}>
-            <span style={{ color: C.textMute, fontSize: 11 }}>เบิกครั้งที่แล้ว: </span>
-            <span style={{ color: C.orangeL, fontSize: 12, fontWeight: 600 }}>{lastW.qty} {item.unit}</span>
-            <span style={{ color: C.textMute, fontSize: 11 }}> · {fmtDate(lastW.date)}</span>
+          <div style={{ background: C.cardEl, borderRadius: 12, padding: "12px 14px", margin: "12px 0 4px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+              <svg width="13" height="13" fill="none" stroke={C.orangeL} strokeWidth="2" viewBox="0 0 24 24"><path d="M12 8v4l3 3M3 12a9 9 0 1018 0 9 9 0 00-18 0z" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              <span style={{ color: C.orangeL, fontSize: 11, fontWeight: 600 }}>ข้อมูลการเบิกครั้งล่าสุด</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", fontSize: 12 }}>
+              <span style={{ color: C.textMute }}>จำนวนที่เบิก</span>
+              <span style={{ color: C.text, fontWeight: 600 }}>{lastW.qty} {item.unit}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", fontSize: 12 }}>
+              <span style={{ color: C.textMute }}>วันที่เบิก</span>
+              <span style={{ color: C.text }}>{fmtDate(lastW.date)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", fontSize: 12 }}>
+              <span style={{ color: C.textMute }}>ผู้เบิก</span>
+              <span style={{ color: lastW.by ? C.text : C.textMute }}>{lastW.by || "—"}</span>
+            </div>
           </div>
         )}
         <div style={{ display: "flex", justifyContent: "center", margin: "14px 0 8px" }}>
@@ -268,12 +281,14 @@ function App() {
   const summaryRef = useRef(null);
   const [urlInput, setUrlInput] = useState(() => getScriptUrl());
   const scriptConfigured = !!getScriptUrl();
+  const [requester, setRequester] = useState(() => { try { return localStorage.getItem("withdraw-requester") || ""; } catch { return ""; } });
 
   // Last withdrawal per item id (from history, most recent)
   const lastWithdrawMap = React.useMemo(() => {
     const m = {};
     history.forEach(batch => batch.items.forEach(it => {
-      if (!m[it.id] || new Date(batch.date) > new Date(m[it.id].date)) m[it.id] = { qty: it.qty, date: batch.date };
+      if (it.id == null) return;
+      if (!m[it.id] || new Date(batch.date) > new Date(m[it.id].date)) m[it.id] = { qty: it.qty, date: batch.date, by: batch.requester || "" };
     }));
     return m;
   }, [history]);
@@ -398,6 +413,7 @@ function App() {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid " + C.border }}>
                 <div style={{ color: C.text, fontSize: 13, fontWeight: 600 }}>{fmtDate(batch.date)}</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  {batch.requester ? <span style={{ color: C.textMute, fontSize: 11 }}>โดย {batch.requester}</span> : null}
                   <span style={{ color: C.orangeL, fontSize: 11 }}>{batch.items.length} รายการ</span>
                   <button onClick={() => { if (confirm("ลบประวัติการเบิกครั้งนี้ (" + fmtDate(batch.date) + ")?")) deleteHistoryBatch(bi, batch); }} title="ลบประวัติครั้งนี้" style={{ background: "none", border: "none", cursor: "pointer", padding: 3, color: C.danger, display: "flex" }}>
                     <svg width="16" height="16" fill="none" stroke={C.danger} strokeWidth="1.6" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2" /></svg>
@@ -433,7 +449,7 @@ function App() {
         const r = await fetch(u + "?action=history");
         const d = await r.json();
         if (d && d.status === "ok") {
-          const hasDelete = d.version === "v2-delete";
+          const hasDelete = d.version && (d.version.indexOf("v2") === 0 || d.version.indexOf("v3") === 0);
           alert("\u2713 \u0e40\u0e0a\u0e37\u0e48\u0e2d\u0e21\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08! \u0e1e\u0e1a\u0e1b\u0e23\u0e30\u0e27\u0e31\u0e15\u0e34 " + (d.batches ? d.batches.length : 0) + " \u0e04\u0e23\u0e31\u0e49\u0e07\n" + (hasDelete ? "\u2713 \u0e23\u0e2d\u0e07\u0e23\u0e31\u0e1a\u0e01\u0e32\u0e23\u0e25\u0e1a\u0e1b\u0e23\u0e30\u0e27\u0e31\u0e15\u0e34 (\u0e42\u0e04\u0e49\u0e14\u0e43\u0e2b\u0e21\u0e48)" : "\u26a0 \u0e22\u0e31\u0e07\u0e40\u0e1b\u0e47\u0e19\u0e42\u0e04\u0e49\u0e14\u0e40\u0e01\u0e48\u0e32 \u2014 \u0e15\u0e49\u0e2d\u0e07 redeploy \u0e41\u0e1a\u0e1a New version \u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e43\u0e2b\u0e49\u0e25\u0e1a\u0e1b\u0e23\u0e30\u0e27\u0e31\u0e15\u0e34\u0e44\u0e14\u0e49"));
         }
         else alert("\u0e40\u0e0a\u0e37\u0e48\u0e2d\u0e21\u0e44\u0e14\u0e49 \u0e41\u0e15\u0e48\u0e23\u0e39\u0e1b\u0e41\u0e1a\u0e1a\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e44\u0e21\u0e48\u0e15\u0e23\u0e07 \u0e15\u0e23\u0e27\u0e08\u0e42\u0e04\u0e49\u0e14 Apps Script");
@@ -558,6 +574,7 @@ function App() {
         date: new Date().toISOString(),
         org: "ห้องคลอด รพ.สะบ้าย้อย",
         scope: scopeLabel,
+        requester: requester || "",
         items: summary.flatMap(g => g.items.map(it => ({ id: it.id, cat: g.cat, name: it.name, unit: it.unit, qty: it.qty }))),
       };
       // 1) save locally (immediate, reliable)
@@ -594,7 +611,7 @@ function App() {
             <div style={{ borderBottom: "2px solid #E8673A", paddingBottom: 10, marginBottom: 14 }}>
               <div style={{ fontSize: 17, fontWeight: 700, color: "#111" }}>ใบสรุปการเบิกเวชภัณฑ์</div>
               <div style={{ fontSize: 12, color: "#555", marginTop: 2 }}>ห้องคลอด โรงพยาบาลสะบ้าย้อย</div>
-              <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>หมวด: {scopeLabel} · วันที่ {dateStr}</div>
+              <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>หมวด: {scopeLabel} · วันที่ {dateStr}{requester ? " · ผู้เบิก: " + requester : ""}</div>
             </div>
             {totalItems === 0 ? (
               <div style={{ textAlign: "center", color: "#999", fontSize: 13, padding: "24px 0" }}>ไม่มีรายการที่ต้องเบิกในหมวดนี้</div>
@@ -646,6 +663,15 @@ function App() {
                 <div style={{ color: C.textMute, fontSize: 10 }}>{b.sub}</div>
               </button>
             ))}
+          </div>
+        </div>
+
+        {/* Requester input */}
+        <div style={{ padding: "0 16px 8px" }}>
+          <div style={{ color: C.textSub, fontSize: 12, marginBottom: 8 }}>ผู้เบิก (ไม่บังคับ)</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: C.card, borderRadius: 12, padding: "10px 14px", border: "1px solid " + C.border }}>
+            <svg width="16" height="16" fill="none" stroke={C.textMute} strokeWidth="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            <input value={requester} onChange={e => { setRequester(e.target.value); try { localStorage.setItem("withdraw-requester", e.target.value); } catch {} }} placeholder="ชื่อผู้เบิก" style={{ flex: 1, background: "none", border: "none", outline: "none", color: C.text, fontSize: 13 }} />
           </div>
         </div>
 
@@ -746,7 +772,7 @@ function App() {
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
                   <div style={{ flex: 1, paddingRight: 8 }}>
                     <div style={{ color: C.text, fontSize: 14, fontWeight: 500, lineHeight: 1.4 }}>{item.name}</div>
-                    <div style={{ color: C.textMute, fontSize: 11, marginTop: 3 }}>{meta.label} · ต้องมีในคลัง {item.req} {item.unit}{lw && <span style={{ color: C.orangeL }}> · เบิกก่อน {lw.qty}</span>}</div>
+                    <div style={{ color: C.textMute, fontSize: 11, marginTop: 3 }}>{meta.label} · ต้องมีในคลัง {item.req} {item.unit}</div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ background: stColor + "22", color: stColor, fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>{st === "ok" ? "ครบ" : st === "low" ? "ไม่พอ" : "หมด"}</span>
@@ -756,6 +782,19 @@ function App() {
                   </div>
                 </div>
                 <div style={{ height: 3, background: C.cardEl, borderRadius: 2, marginBottom: 12, overflow: "hidden" }}><div style={{ height: "100%", width: (pct*100) + "%", background: stColor, borderRadius: 2, transition: "width 0.2s" }} /></div>
+                {lw && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, background: C.cardEl, borderRadius: 10, padding: "8px 12px", marginBottom: 12 }}>
+                    <svg width="14" height="14" fill="none" stroke={C.orangeL} strokeWidth="2" viewBox="0 0 24 24" style={{ flexShrink: 0 }}><path d="M12 8v4l3 3M3 12a9 9 0 1018 0 9 9 0 00-18 0z" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ color: C.textMute, fontSize: 10 }}>เบิกครั้งล่าสุด</div>
+                      <div style={{ color: C.textSub, fontSize: 11, marginTop: 1 }}>
+                        <span style={{ color: C.orangeL, fontWeight: 600 }}>{lw.qty} {item.unit}</span>
+                        <span> · {fmtDate(lw.date)}</span>
+                        {lw.by ? <span> · โดย {lw.by}</span> : null}
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <button onClick={(e) => { e.stopPropagation(); changeCount(item.id, -1); }} style={{ width: 34, height: 34, borderRadius: 10, border: "1px solid " + C.border, background: C.cardEl, color: C.text, fontSize: 18, cursor: "pointer" }}>−</button>
