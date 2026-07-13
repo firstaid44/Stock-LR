@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>เช็คสต็อกเวชภัณฑ์ | ห้องคลอด รพ.สะบ้าย้อย Version 09.09</title>
+<title>เช็คสต็อกเวชภัณฑ์ | ห้องคลอด รพ.สะบ้าย้อย</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
@@ -295,14 +295,9 @@ function App() {
   const removeItem = useCallback((id) => { setItems(prev => { const next = prev.filter(it => it.id !== id); persist(next); return next; }); }, [persist]);
   const resetCat = useCallback((cat) => { setItems(prev => { const next = prev.map(it => it.cat === cat ? { ...it, count: 0 } : it); persist(next); return next; }); }, [persist]);
 
-  const deleteHistoryBatch = useCallback((idx) => {
-    setHistory(prev => {
-      const batch = prev[idx];
-      if (batch && batch.batchId) postToSheet({ action: "delete", batchId: batch.batchId });
-      const next = prev.filter((_, i) => i !== idx);
-      saveHistory(next);
-      return next;
-    });
+  const deleteHistoryBatch = useCallback((idx, batch) => {
+    if (batch && batch.batchId) postToSheet({ action: "delete", batchId: batch.batchId });
+    setHistory(prev => { const next = prev.filter((_, i) => i !== idx); saveHistory(next); return next; });
   }, []);
   const clearAllHistory = useCallback(() => {
     postToSheet({ action: "clearAll" });
@@ -404,7 +399,7 @@ function App() {
                 <div style={{ color: C.text, fontSize: 13, fontWeight: 600 }}>{fmtDate(batch.date)}</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <span style={{ color: C.orangeL, fontSize: 11 }}>{batch.items.length} รายการ</span>
-                  <button onClick={() => { if (confirm("ลบประวัติการเบิกครั้งนี้ (" + fmtDate(batch.date) + ")?")) deleteHistoryBatch(bi); }} title="ลบประวัติครั้งนี้" style={{ background: "none", border: "none", cursor: "pointer", padding: 3, color: C.danger, display: "flex" }}>
+                  <button onClick={() => { if (confirm("ลบประวัติการเบิกครั้งนี้ (" + fmtDate(batch.date) + ")?")) deleteHistoryBatch(bi, batch); }} title="ลบประวัติครั้งนี้" style={{ background: "none", border: "none", cursor: "pointer", padding: 3, color: C.danger, display: "flex" }}>
                     <svg width="16" height="16" fill="none" stroke={C.danger} strokeWidth="1.6" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2" /></svg>
                   </button>
                 </div>
@@ -437,7 +432,10 @@ function App() {
       try {
         const r = await fetch(u + "?action=history");
         const d = await r.json();
-        if (d && d.status === "ok") alert("\u2713 \u0e40\u0e0a\u0e37\u0e48\u0e2d\u0e21\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08! \u0e1e\u0e1a\u0e1b\u0e23\u0e30\u0e27\u0e31\u0e15\u0e34 " + (d.batches ? d.batches.length : 0) + " \u0e04\u0e23\u0e31\u0e49\u0e07");
+        if (d && d.status === "ok") {
+          const hasDelete = d.version === "v2-delete";
+          alert("\u2713 \u0e40\u0e0a\u0e37\u0e48\u0e2d\u0e21\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08! \u0e1e\u0e1a\u0e1b\u0e23\u0e30\u0e27\u0e31\u0e15\u0e34 " + (d.batches ? d.batches.length : 0) + " \u0e04\u0e23\u0e31\u0e49\u0e07\n" + (hasDelete ? "\u2713 \u0e23\u0e2d\u0e07\u0e23\u0e31\u0e1a\u0e01\u0e32\u0e23\u0e25\u0e1a\u0e1b\u0e23\u0e30\u0e27\u0e31\u0e15\u0e34 (\u0e42\u0e04\u0e49\u0e14\u0e43\u0e2b\u0e21\u0e48)" : "\u26a0 \u0e22\u0e31\u0e07\u0e40\u0e1b\u0e47\u0e19\u0e42\u0e04\u0e49\u0e14\u0e40\u0e01\u0e48\u0e32 \u2014 \u0e15\u0e49\u0e2d\u0e07 redeploy \u0e41\u0e1a\u0e1a New version \u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e43\u0e2b\u0e49\u0e25\u0e1a\u0e1b\u0e23\u0e30\u0e27\u0e31\u0e15\u0e34\u0e44\u0e14\u0e49"));
+        }
         else alert("\u0e40\u0e0a\u0e37\u0e48\u0e2d\u0e21\u0e44\u0e14\u0e49 \u0e41\u0e15\u0e48\u0e23\u0e39\u0e1b\u0e41\u0e1a\u0e1a\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e44\u0e21\u0e48\u0e15\u0e23\u0e07 \u0e15\u0e23\u0e27\u0e08\u0e42\u0e04\u0e49\u0e14 Apps Script");
       } catch (e) {
         alert("\u26a0 \u0e40\u0e0a\u0e37\u0e48\u0e2d\u0e21\u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08 (\u0e01\u0e32\u0e23\u0e2d\u0e48\u0e32\u0e19\u0e2d\u0e32\u0e08\u0e16\u0e39\u0e01 CORS \u0e1a\u0e25\u0e47\u0e2d\u0e01 \u0e41\u0e15\u0e48\u0e01\u0e32\u0e23\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e22\u0e31\u0e07\u0e17\u0e33\u0e07\u0e32\u0e19\u0e44\u0e14\u0e49)");
