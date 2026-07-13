@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>เช็คสต็อกเวชภัณฑ์ | ห้องคลอด รพ.สะบ้าย้อย</title>
+<title>เช็คสต็อกเวชภัณฑ์ | ห้องคลอด รพ.สะบ้าย้อย Version 09.09</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
@@ -296,9 +296,16 @@ function App() {
   const resetCat = useCallback((cat) => { setItems(prev => { const next = prev.map(it => it.cat === cat ? { ...it, count: 0 } : it); persist(next); return next; }); }, [persist]);
 
   const deleteHistoryBatch = useCallback((idx) => {
-    setHistory(prev => { const next = prev.filter((_, i) => i !== idx); saveHistory(next); return next; });
+    setHistory(prev => {
+      const batch = prev[idx];
+      if (batch && batch.batchId) postToSheet({ action: "delete", batchId: batch.batchId });
+      const next = prev.filter((_, i) => i !== idx);
+      saveHistory(next);
+      return next;
+    });
   }, []);
   const clearAllHistory = useCallback(() => {
+    postToSheet({ action: "clearAll" });
     setHistory([]); saveHistory([]);
   }, []);
 
@@ -549,6 +556,7 @@ function App() {
       if (totalItems === 0) { alert("ไม่มีรายการที่ต้องเบิก"); return; }
       setSaving(true);
       const batch = {
+        batchId: "B" + Date.now(),
         date: new Date().toISOString(),
         org: "ห้องคลอด รพ.สะบ้าย้อย",
         scope: scopeLabel,
