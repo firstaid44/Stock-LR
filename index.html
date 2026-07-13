@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>เช็คสต็อกเวชภัณฑ์ | ห้องคลอด รพ.สะบ้าย้อย 8.32</title>
+<title>เช็คสต็อกเวชภัณฑ์ | ห้องคลอด รพ.สะบ้าย้อย</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
@@ -34,8 +34,13 @@ const { useState, useEffect, useCallback, useRef } = React;
    (ดูวิธีสร้างในไฟล์ README + google-apps-script.gs)
    ═══════════════════════════════════════════════════════════════════ */
 const CONFIG = {
-  GOOGLE_SCRIPT_URL: "", // <-- วาง URL ตรงนี้ เช่น "https://script.google.com/macros/s/AKfyc.../exec"
+  // วาง URL ของ Google Apps Script Web App (ลงท้าย /exec) ตรงนี้ก็ได้
+  // หรือกรอกผ่านหน้า "ตั้งค่า" ในแอป (เก็บใน localStorage) ก็ได้เช่นกัน
+  GOOGLE_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbyQhVhEzywdoc069kGhEckZ23FN_ZTSShTiqinvzzh-Qor4DEyqzS1gohWMeE7AB6M02A/exec",
 };
+const SETTINGS_KEY = "withdraw-settings-v1";
+const getScriptUrl = () => { try { return (JSON.parse(localStorage.getItem(SETTINGS_KEY)||"{}").url) || CONFIG.GOOGLE_SCRIPT_URL || ""; } catch { return CONFIG.GOOGLE_SCRIPT_URL || ""; } };
+const setScriptUrl = (url) => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ url })); } catch {} };
 
 const C = {
   bg: "#0D0D0D", card: "#1A1A1A", cardEl: "#222222", border: "#2E2E2E",
@@ -186,9 +191,10 @@ const HexIcon = ({ size = 44, color = C.orange }) => (
 
 // ── POST to Google Sheet (via Apps Script, no-cors) ───────────────
 async function postToSheet(payload) {
-  if (!CONFIG.GOOGLE_SCRIPT_URL) return { ok: false, reason: "no-url" };
+  const URL_ = getScriptUrl();
+  if (!URL_) return { ok: false, reason: "no-url" };
   try {
-    await fetch(CONFIG.GOOGLE_SCRIPT_URL, {
+    await fetch(URL_, {
       method: "POST",
       mode: "no-cors",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -260,6 +266,8 @@ function App() {
   const [saving, setSaving] = useState(false);
   const [savedInfo, setSavedInfo] = useState(null);
   const summaryRef = useRef(null);
+  const [urlInput, setUrlInput] = useState(() => getScriptUrl());
+  const scriptConfigured = !!getScriptUrl();
 
   // Last withdrawal per item id (from history, most recent)
   const lastWithdrawMap = React.useMemo(() => {
@@ -272,8 +280,9 @@ function App() {
 
   // Try fetch history from sheet on load (best-effort; falls back to localStorage)
   useEffect(() => {
-    if (!CONFIG.GOOGLE_SCRIPT_URL) return;
-    fetch(CONFIG.GOOGLE_SCRIPT_URL + "?action=history")
+    const URL_ = getScriptUrl();
+    if (!URL_) return;
+    fetch(URL_ + "?action=history")
       .then(r => r.json())
       .then(d => { if (d && Array.isArray(d.batches) && d.batches.length) { setHistory(d.batches); saveHistory(d.batches); } })
       .catch(() => {});
@@ -285,6 +294,13 @@ function App() {
   }, [persist]);
   const removeItem = useCallback((id) => { setItems(prev => { const next = prev.filter(it => it.id !== id); persist(next); return next; }); }, [persist]);
   const resetCat = useCallback((cat) => { setItems(prev => { const next = prev.map(it => it.cat === cat ? { ...it, count: 0 } : it); persist(next); return next; }); }, [persist]);
+
+  const deleteHistoryBatch = useCallback((idx) => {
+    setHistory(prev => { const next = prev.filter((_, i) => i !== idx); saveHistory(next); return next; });
+  }, []);
+  const clearAllHistory = useCallback(() => {
+    setHistory([]); saveHistory([]);
+  }, []);
 
   const allNeed = items.filter(it => it.count < it.req).length;
   const modalItem = modalId ? items.find(it => it.id === modalId) : null;
@@ -308,11 +324,15 @@ function App() {
       <div style={{ position: "absolute", top: 70, right: 46, opacity: 0.2 }}><HexIcon size={60} color={C.orange} /></div>
       <div style={{ position: "absolute", bottom: -30, left: -30, opacity: 0.28 }}><HexIcon size={120} color={C.orange} /></div>
       <div style={{ position: "absolute", bottom: 90, left: 54, opacity: 0.13 }}><HexIcon size={60} color="#fff" /></div>
-      <div style={{ padding: "48px 36px 0", zIndex: 1 }}>
+      <div style={{ padding: "40px 22px 0", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <HexIcon size={26} color={C.orange} />
           <span style={{ color: C.textSub, fontSize: 12, letterSpacing: "0.12em" }}>ห้องคลอด โรงพยาบาลสะบ้าย้อย</span>
         </div>
+        <button onClick={() => { setUrlInput(getScriptUrl()); setPage("settings"); }} title="ตั้งค่า" style={{ width: 38, height: 38, background: C.card, border: "1px solid " + C.border, borderRadius: 11, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+          <svg width="18" height="18" fill="none" stroke={scriptConfigured ? C.textSub : C.warning} strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          {!scriptConfigured && <span style={{ position: "absolute", top: 6, right: 6, width: 8, height: 8, borderRadius: "50%", background: C.warning, border: "2px solid " + C.card }} />}
+        </button>
       </div>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "0 36px", zIndex: 1 }}>
         <div style={{ textAlign: "center", marginBottom: 40 }}>
@@ -361,7 +381,13 @@ function App() {
         <button onClick={() => setPage("home")} style={{ width: 36, height: 36, background: C.cardEl, border: "none", borderRadius: 10, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <svg width="16" height="16" fill="none" stroke={C.text} strokeWidth="2" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
-        <div style={{ color: C.text, fontWeight: 600, fontSize: 15 }}>ประวัติการเบิก</div>
+        <div style={{ flex: 1, color: C.text, fontWeight: 600, fontSize: 15 }}>ประวัติการเบิก</div>
+        {history.length > 0 && (
+          <button onClick={() => { if (confirm("ลบประวัติทั้งหมด " + history.length + " ครั้ง?")) clearAllHistory(); }} style={{ padding: "6px 12px", background: C.danger + "1E", border: "1px solid " + C.danger + "55", borderRadius: 8, cursor: "pointer", color: C.danger, fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
+            <svg width="12" height="12" fill="none" stroke={C.danger} strokeWidth="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" /></svg>
+            ลบทั้งหมด
+          </button>
+        )}
       </div>
       <div style={{ flex: 1, padding: 16 }}>
         {history.length === 0 ? <div style={{ textAlign: "center", color: C.textMute, fontSize: 13, padding: 40 }}>ยังไม่มีประวัติ</div> :
@@ -369,7 +395,12 @@ function App() {
             <div key={bi} style={{ background: C.card, borderRadius: 14, padding: 16, marginBottom: 12, border: "1px solid " + C.border }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid " + C.border }}>
                 <div style={{ color: C.text, fontSize: 13, fontWeight: 600 }}>{fmtDate(batch.date)}</div>
-                <div style={{ color: C.orangeL, fontSize: 11 }}>{batch.items.length} รายการ</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ color: C.orangeL, fontSize: 11 }}>{batch.items.length} รายการ</span>
+                  <button onClick={() => { if (confirm("ลบประวัติการเบิกครั้งนี้ (" + fmtDate(batch.date) + ")?")) deleteHistoryBatch(bi); }} title="ลบประวัติครั้งนี้" style={{ background: "none", border: "none", cursor: "pointer", padding: 3, color: C.danger, display: "flex" }}>
+                    <svg width="16" height="16" fill="none" stroke={C.danger} strokeWidth="1.6" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2" /></svg>
+                  </button>
+                </div>
               </div>
               {batch.items.map((it, ii) => (
                 <div key={ii} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 12 }}>
@@ -383,6 +414,65 @@ function App() {
       </div>
     </div>
   );
+
+  // ═══ SETTINGS ═══════════════════════════════════════
+  if (page === "settings") {
+    const saveUrl = () => {
+      const u = urlInput.trim();
+      setScriptUrl(u);
+      alert(u ? "\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01 URL \u0e40\u0e23\u0e35\u0e22\u0e1a\u0e23\u0e49\u0e2d\u0e22\u0e41\u0e25\u0e49\u0e27" : "\u0e25\u0e49\u0e32\u0e07 URL \u0e41\u0e25\u0e49\u0e27");
+      setPage("home");
+    };
+    const testUrl = async () => {
+      const u = urlInput.trim();
+      if (!u) { alert("\u0e01\u0e23\u0e38\u0e13\u0e32\u0e43\u0e2a\u0e48 URL \u0e01\u0e48\u0e2d\u0e19"); return; }
+      setScriptUrl(u);
+      try {
+        const r = await fetch(u + "?action=history");
+        const d = await r.json();
+        if (d && d.status === "ok") alert("\u2713 \u0e40\u0e0a\u0e37\u0e48\u0e2d\u0e21\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08! \u0e1e\u0e1a\u0e1b\u0e23\u0e30\u0e27\u0e31\u0e15\u0e34 " + (d.batches ? d.batches.length : 0) + " \u0e04\u0e23\u0e31\u0e49\u0e07");
+        else alert("\u0e40\u0e0a\u0e37\u0e48\u0e2d\u0e21\u0e44\u0e14\u0e49 \u0e41\u0e15\u0e48\u0e23\u0e39\u0e1b\u0e41\u0e1a\u0e1a\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e44\u0e21\u0e48\u0e15\u0e23\u0e07 \u0e15\u0e23\u0e27\u0e08\u0e42\u0e04\u0e49\u0e14 Apps Script");
+      } catch (e) {
+        alert("\u26a0 \u0e40\u0e0a\u0e37\u0e48\u0e2d\u0e21\u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08 (\u0e01\u0e32\u0e23\u0e2d\u0e48\u0e32\u0e19\u0e2d\u0e32\u0e08\u0e16\u0e39\u0e01 CORS \u0e1a\u0e25\u0e47\u0e2d\u0e01 \u0e41\u0e15\u0e48\u0e01\u0e32\u0e23\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e22\u0e31\u0e07\u0e17\u0e33\u0e07\u0e32\u0e19\u0e44\u0e14\u0e49)");
+      }
+    };
+    return (
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", background: C.bg, overflowY: "auto" }}>
+        <div style={{ background: C.card, borderBottom: "1px solid " + C.border, padding: "14px 18px", position: "sticky", top: 0, zIndex: 10, display: "flex", alignItems: "center", gap: 10 }}>
+          <button onClick={() => setPage("home")} style={{ width: 36, height: 36, background: C.cardEl, border: "none", borderRadius: 10, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width="16" height="16" fill="none" stroke={C.text} strokeWidth="2" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </button>
+          <div style={{ color: C.text, fontWeight: 600, fontSize: 15 }}>\u0e15\u0e31\u0e49\u0e07\u0e04\u0e48\u0e32 Google Sheet</div>
+        </div>
+        <div style={{ flex: 1, padding: 18 }}>
+          <div style={{ background: C.card, borderRadius: 14, padding: 16, border: "1px solid " + C.border, marginBottom: 16 }}>
+            <div style={{ color: C.text, fontSize: 13, fontWeight: 600, marginBottom: 6 }}>URL ของ Apps Script (Web app)</div>
+            <div style={{ color: C.textMute, fontSize: 11, lineHeight: 1.6, marginBottom: 12 }}>ต้องเป็นลิงก์ที่ลงท้ายด้วย <b style={{ color: C.orangeL }}>/exec</b> จากการ Deploy Apps Script<br />ไม่ใช่ลิงก์ docs.google.com/spreadsheets/...</div>
+            <input value={urlInput} onChange={e => setUrlInput(e.target.value)} placeholder="https://script.google.com/macros/s/.../exec" style={{ width: "100%", background: C.cardEl, border: "1px solid " + C.border, borderRadius: 10, padding: "11px 12px", color: C.text, fontSize: 12, outline: "none", marginBottom: 12 }} />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={testUrl} style={{ flex: 1, padding: "11px", borderRadius: 10, border: "1px solid " + C.border, background: C.cardEl, color: C.text, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>ทดสอบ</button>
+              <button onClick={saveUrl} style={{ flex: 1, padding: "11px", borderRadius: 10, border: "none", background: C.orange, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>บันทึก</button>
+            </div>
+          </div>
+          <div style={{ background: C.card, borderRadius: 14, padding: 16, border: "1px solid " + C.border }}>
+            <div style={{ color: C.text, fontSize: 13, fontWeight: 600, marginBottom: 10 }}>วิธีสร้าง URL (ทำครั้งเดียว)</div>
+            {[
+              "เปิด Google Sheet \u2192 เมนู Extensions \u2192 Apps Script",
+              "วางโค้ดจากไฟล์ google-apps-script.gs \u2192 กด Save",
+              "Deploy \u2192 New deployment \u2192 เลือก Web app",
+              "Execute as: Me · Who has access: Anyone \u2192 Deploy",
+              "คัดลอก Web app URL (ลงท้าย /exec) มาวางด้านบน",
+            ].map((s, i) => (
+              <div key={i} style={{ display: "flex", gap: 10, marginBottom: 8, alignItems: "flex-start" }}>
+                <span style={{ width: 20, height: 20, borderRadius: "50%", background: C.orange + "22", color: C.orange, fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i+1}</span>
+                <span style={{ color: C.textSub, fontSize: 12, lineHeight: 1.5 }}>{s}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ═══ PICK CATEGORY ══════════════════════════════════════════════
   if (page === "pick") return (
@@ -573,7 +663,10 @@ function App() {
       <div style={{ color: C.text, fontSize: 22, fontWeight: 700, marginBottom: 8 }}>บันทึกการเบิกเรียบร้อย</div>
       <div style={{ color: C.textSub, fontSize: 14, marginBottom: 4 }}>บันทึก {savedInfo?.count} รายการ · รวม {savedInfo?.qty} หน่วย</div>
       {savedInfo?.noUrl ? (
-        <div style={{ color: C.warning, fontSize: 12, marginBottom: 24, maxWidth: 300, lineHeight: 1.6 }}>⚠ ยังไม่ได้เชื่อม Google Sheet<br />(บันทึกในเครื่องแล้ว — ตั้งค่า URL ในไฟล์เพื่อส่งเข้าชีต)</div>
+        <div style={{ marginBottom: 24, maxWidth: 320 }}>
+          <div style={{ color: C.warning, fontSize: 12, lineHeight: 1.6, marginBottom: 10 }}>⚠ ยังไม่ได้เชื่อม Google Sheet<br />(บันทึกในเครื่องแล้ว)</div>
+          <button onClick={() => { setUrlInput(getScriptUrl()); setPage("settings"); }} style={{ padding: "10px 18px", borderRadius: 12, border: "1px solid " + C.warning + "66", background: C.warning + "1A", color: C.warning, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>ตั้งค่าเชื่อม Google Sheet</button>
+        </div>
       ) : savedInfo?.sheet ? (
         <div style={{ color: C.success, fontSize: 12, marginBottom: 24 }}>✓ ส่งเข้า Google Sheet แล้ว</div>
       ) : (
