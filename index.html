@@ -3,11 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>เช็คสต็อกเวชภัณฑ์ | ห้องคลอด รพ.สะบ้าย้อย Version 2569.07.12.20.24</title>
+<title>เช็คสต็อกเวชภัณฑ์ | ห้องคลอด รพ.สะบ้าย้อย 8.32</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; background: #0D0D0D; }
@@ -19,6 +20,7 @@
   @keyframes popIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   @keyframes bump { 0% { transform: scale(1); } 40% { transform: scale(1.15); } 100% { transform: scale(1); } }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -26,6 +28,14 @@
 
 <script type="text/babel">
 const { useState, useEffect, useCallback, useRef } = React;
+
+/* ═══════════════════════════════════════════════════════════════════
+   ⚙️ ตั้งค่า: วาง URL ของ Google Apps Script Web App ตรงนี้
+   (ดูวิธีสร้างในไฟล์ README + google-apps-script.gs)
+   ═══════════════════════════════════════════════════════════════════ */
+const CONFIG = {
+  GOOGLE_SCRIPT_URL: "", // <-- วาง URL ตรงนี้ เช่น "https://script.google.com/macros/s/AKfyc.../exec"
+};
 
 const C = {
   bg: "#0D0D0D", card: "#1A1A1A", cardEl: "#222222", border: "#2E2E2E",
@@ -151,10 +161,15 @@ const CAT_META = {
 };
 const CATS = ["ฝ่ายการ", "พัสดุ", "Lab"];
 const STORAGE_KEY = "withdraw-app-v4";
+const HISTORY_KEY = "withdraw-history-v1";
 
 const getStatus = (count, req) => count >= req ? "ok" : count > 0 ? "low" : "empty";
 const loadSaved = () => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); } catch { return {}; } };
 const saveData = (obj) => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(obj)); } catch {} };
+const loadHistory = () => { try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); } catch { return []; } };
+const saveHistory = (arr) => { try { localStorage.setItem(HISTORY_KEY, JSON.stringify(arr)); } catch {} };
+
+const fmtDate = (d) => new Date(d).toLocaleString("th-TH", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" });
 
 // ── Hexagon helpers ───────────────────────────────────────────────
 const hexPoints = (cx, cy, r) => Array.from({length:6},(_, k) => { const a=(Math.PI/3)*k-Math.PI/6; return (cx+r*Math.cos(a))+","+(cy+r*Math.sin(a)); }).join(" ");
@@ -169,62 +184,64 @@ const HexIcon = ({ size = 44, color = C.orange }) => (
   <svg width={size} height={size} viewBox={"0 0 "+size+" "+size}><polygon points={hexPoints(size/2,size/2,size/2-2)} fill={color} /></svg>
 );
 
-// ── Count Modal (big tap buttons) ─────────────────────────────────
-function CountModal({ item, onClose, onChange }) {
+// ── POST to Google Sheet (via Apps Script, no-cors) ───────────────
+async function postToSheet(payload) {
+  if (!CONFIG.GOOGLE_SCRIPT_URL) return { ok: false, reason: "no-url" };
+  try {
+    await fetch(CONFIG.GOOGLE_SCRIPT_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload),
+    });
+    return { ok: true }; // no-cors = opaque response, assume success
+  } catch (e) {
+    return { ok: false, reason: "network" };
+  }
+}
+
+// ── Count Modal ───────────────────────────────────────────────────
+function CountModal({ item, lastW, onClose, onChange }) {
+  const [bump, setBump] = useState(false);
   if (!item) return null;
   const st = getStatus(item.count, item.req);
   const need = Math.max(0, item.req - item.count);
   const stColor = st === "empty" ? C.danger : st === "low" ? C.warning : C.success;
-  const [bump, setBump] = useState(false);
   const triggerBump = () => { setBump(true); setTimeout(() => setBump(false), 220); };
-
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 100, animation: "fadeIn 0.15s ease" }}>
       <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 480, background: C.card, borderRadius: "24px 24px 0 0", padding: "10px 20px 32px", border: "1px solid " + C.border, borderBottom: "none", animation: "popIn 0.22s cubic-bezier(0.34,1.56,0.64,1)" }}>
-        {/* Grabber */}
         <div style={{ width: 40, height: 4, background: C.border, borderRadius: 4, margin: "6px auto 18px" }} />
-
-        {/* Item title */}
         <div style={{ textAlign: "center", marginBottom: 4 }}>
           <div style={{ color: C.text, fontSize: 19, fontWeight: 600, lineHeight: 1.3 }}>{item.name}</div>
           <div style={{ color: C.textMute, fontSize: 12, marginTop: 4 }}>{CAT_META[item.cat].label} · ต้องมีในคลัง {item.req} {item.unit}</div>
         </div>
-
-        {/* Status */}
+        {lastW && (
+          <div style={{ background: C.cardEl, borderRadius: 10, padding: "8px 14px", margin: "12px 0 4px", textAlign: "center" }}>
+            <span style={{ color: C.textMute, fontSize: 11 }}>เบิกครั้งที่แล้ว: </span>
+            <span style={{ color: C.orangeL, fontSize: 12, fontWeight: 600 }}>{lastW.qty} {item.unit}</span>
+            <span style={{ color: C.textMute, fontSize: 11 }}> · {fmtDate(lastW.date)}</span>
+          </div>
+        )}
         <div style={{ display: "flex", justifyContent: "center", margin: "14px 0 8px" }}>
-          <span style={{ background: stColor + "22", color: stColor, fontSize: 13, fontWeight: 700, padding: "5px 16px", borderRadius: 20 }}>
-            {st === "ok" ? "✓ ครบตามกำหนด" : st === "low" ? "! ยังไม่พอ" : "✕ หมด/ยังไม่นับ"}
-          </span>
+          <span style={{ background: stColor + "22", color: stColor, fontSize: 13, fontWeight: 700, padding: "5px 16px", borderRadius: 20 }}>{st === "ok" ? "✓ ครบตามกำหนด" : st === "low" ? "! ยังไม่พอ" : "✕ หมด/ยังไม่นับ"}</span>
         </div>
-
-        {/* Big counter */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 20, margin: "18px 0 8px" }}>
-          <button onClick={() => { onChange(item.id, -1); triggerBump(); }}
-            style={{ width: 74, height: 74, borderRadius: 22, border: "none", background: C.cardEl, color: C.text, fontSize: 38, fontWeight: 300, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 14px rgba(0,0,0,0.3)" }}>−</button>
+          <button onClick={() => { onChange(item.id, -1); triggerBump(); }} style={{ width: 74, height: 74, borderRadius: 22, border: "none", background: C.cardEl, color: C.text, fontSize: 38, fontWeight: 300, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 14px rgba(0,0,0,0.3)" }}>−</button>
           <div style={{ minWidth: 100, textAlign: "center" }}>
             <div style={{ color: C.text, fontSize: 56, fontWeight: 700, lineHeight: 1, animation: bump ? "bump 0.22s ease" : "none" }}>{item.count}</div>
             <div style={{ color: C.textMute, fontSize: 14, marginTop: 4 }}>{item.unit}</div>
           </div>
-          <button onClick={() => { onChange(item.id, 1); triggerBump(); }}
-            style={{ width: 74, height: 74, borderRadius: 22, border: "none", background: C.orange, color: "#fff", fontSize: 38, fontWeight: 300, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 18px " + C.orange + "66" }}>+</button>
+          <button onClick={() => { onChange(item.id, 1); triggerBump(); }} style={{ width: 74, height: 74, borderRadius: 22, border: "none", background: C.orange, color: "#fff", fontSize: 38, fontWeight: 300, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 18px " + C.orange + "66" }}>+</button>
         </div>
-
-        {/* Quick add buttons */}
         <div style={{ display: "flex", gap: 8, justifyContent: "center", margin: "16px 0 18px" }}>
-          {[5, 10].map(n => (
-            <button key={"+"+n} onClick={() => { onChange(item.id, n); triggerBump(); }}
-              style={{ padding: "8px 18px", borderRadius: 12, border: "1px solid " + C.border, background: C.cardEl, color: C.orangeL, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>+{n}</button>
-          ))}
-          <button onClick={() => { onChange(item.id, "zero"); triggerBump(); }}
-            style={{ padding: "8px 18px", borderRadius: 12, border: "1px solid " + C.border, background: C.cardEl, color: C.textSub, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>ล้าง 0</button>
+          {[5, 10].map(n => (<button key={"+"+n} onClick={() => { onChange(item.id, n); triggerBump(); }} style={{ padding: "8px 18px", borderRadius: 12, border: "1px solid " + C.border, background: C.cardEl, color: C.orangeL, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>+{n}</button>))}
+          <button onClick={() => { onChange(item.id, "zero"); triggerBump(); }} style={{ padding: "8px 18px", borderRadius: 12, border: "1px solid " + C.border, background: C.cardEl, color: C.textSub, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>ล้าง 0</button>
         </div>
-
-        {/* Need to withdraw */}
         <div style={{ background: need > 0 ? C.orange + "18" : C.success + "18", borderRadius: 14, padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
           <span style={{ color: need > 0 ? C.orangeL : C.success, fontSize: 14, fontWeight: 500 }}>{need > 0 ? "ต้องเบิกเพิ่ม" : "ไม่ต้องเบิก"}</span>
           <span style={{ color: need > 0 ? C.orange : C.success, fontSize: 22, fontWeight: 700 }}>{need} <span style={{ fontSize: 13 }}>{item.unit}</span></span>
         </div>
-
         <button onClick={onClose} style={{ width: "100%", padding: "14px", borderRadius: 14, border: "none", background: C.cardEl, color: C.text, fontSize: 15, fontWeight: 600, cursor: "pointer" }}>เสร็จสิ้น</button>
       </div>
     </div>
@@ -233,52 +250,55 @@ function CountModal({ item, onClose, onChange }) {
 
 // ── Main App ──────────────────────────────────────────────────────
 function App() {
-  const [page, setPage] = useState("home"); // home | pick | items
+  const [page, setPage] = useState("home"); // home | pick | items | export | saved
   const [activeCat, setActiveCat] = useState(null);
-  const [items, setItems] = useState(() => {
-    const saved = loadSaved();
-    return ALL_ITEMS.map(item => ({ ...item, count: saved[item.id] ?? 0 }));
-  });
+  const [items, setItems] = useState(() => { const saved = loadSaved(); return ALL_ITEMS.map(item => ({ ...item, count: saved[item.id] ?? 0 })); });
   const [search, setSearch] = useState("");
   const [modalId, setModalId] = useState(null);
+  const [history, setHistory] = useState(() => loadHistory());
+  const [exportScope, setExportScope] = useState("all"); // "all" or a category
+  const [saving, setSaving] = useState(false);
+  const [savedInfo, setSavedInfo] = useState(null);
+  const summaryRef = useRef(null);
+
+  // Last withdrawal per item id (from history, most recent)
+  const lastWithdrawMap = React.useMemo(() => {
+    const m = {};
+    history.forEach(batch => batch.items.forEach(it => {
+      if (!m[it.id] || new Date(batch.date) > new Date(m[it.id].date)) m[it.id] = { qty: it.qty, date: batch.date };
+    }));
+    return m;
+  }, [history]);
+
+  // Try fetch history from sheet on load (best-effort; falls back to localStorage)
+  useEffect(() => {
+    if (!CONFIG.GOOGLE_SCRIPT_URL) return;
+    fetch(CONFIG.GOOGLE_SCRIPT_URL + "?action=history")
+      .then(r => r.json())
+      .then(d => { if (d && Array.isArray(d.batches) && d.batches.length) { setHistory(d.batches); saveHistory(d.batches); } })
+      .catch(() => {});
+  }, []);
 
   const persist = useCallback((list) => { const obj = {}; list.forEach(it => { obj[it.id] = it.count; }); saveData(obj); }, []);
-
   const changeCount = useCallback((id, delta) => {
-    setItems(prev => {
-      const next = prev.map(it => {
-        if (it.id !== id) return it;
-        if (delta === "zero") return { ...it, count: 0 };
-        return { ...it, count: Math.max(0, it.count + delta) };
-      });
-      persist(next); return next;
-    });
+    setItems(prev => { const next = prev.map(it => { if (it.id !== id) return it; if (delta === "zero") return { ...it, count: 0 }; return { ...it, count: Math.max(0, it.count + delta) }; }); persist(next); return next; });
   }, [persist]);
-
   const removeItem = useCallback((id) => { setItems(prev => { const next = prev.filter(it => it.id !== id); persist(next); return next; }); }, [persist]);
   const resetCat = useCallback((cat) => { setItems(prev => { const next = prev.map(it => it.cat === cat ? { ...it, count: 0 } : it); persist(next); return next; }); }, [persist]);
 
   const allNeed = items.filter(it => it.count < it.req).length;
   const modalItem = modalId ? items.find(it => it.id === modalId) : null;
 
-  const exportCSV = (cat) => {
-    const list = items.filter(it => it.cat === cat);
-    let csv = "\uFEFF";
-    csv += "หน่วยงาน,ห้องคลอด รพ.สะบ้าย้อย\n";
-    csv += "หมวด," + CAT_META[cat].label + "\n";
-    csv += "วันที่ส่งออก," + new Date().toLocaleString("th-TH") + "\n\n";
-    csv += "รายการ,หน่วย,ต้องมี,นับได้,ต้องเบิก,สถานะ\n";
-    list.forEach(it => {
-      const need = Math.max(0, it.req - it.count);
-      const st = getStatus(it.count, it.req) === "ok" ? "ครบ" : it.count > 0 ? "ไม่พอ" : "หมด";
-      csv += ['"' + it.name + '"', it.unit, it.req, it.count, need, st].join(",") + "\n";
-    });
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = "เบิกของ_" + CAT_META[cat].label + "_" + new Date().toISOString().slice(0,10) + ".csv";
-    a.click(); URL.revokeObjectURL(url);
+  // Build withdrawal summary (items with need > 0)
+  const buildSummary = (scope) => {
+    const cats = scope === "all" ? CATS : [scope];
+    return cats.map(cat => {
+      const list = items.filter(it => it.cat === cat && (it.req - it.count) > 0).map(it => ({ id: it.id, name: it.name, unit: it.unit, qty: it.req - it.count }));
+      return { cat, items: list };
+    }).filter(g => g.items.length > 0);
   };
+
+  const openExport = (scope) => { setExportScope(scope); setPage("export"); };
 
   // ═══ HOME ═══════════════════════════════════════════════════════
   if (page === "home") return (
@@ -288,32 +308,20 @@ function App() {
       <div style={{ position: "absolute", top: 70, right: 46, opacity: 0.2 }}><HexIcon size={60} color={C.orange} /></div>
       <div style={{ position: "absolute", bottom: -30, left: -30, opacity: 0.28 }}><HexIcon size={120} color={C.orange} /></div>
       <div style={{ position: "absolute", bottom: 90, left: 54, opacity: 0.13 }}><HexIcon size={60} color="#fff" /></div>
-
-      {/* Top label */}
       <div style={{ padding: "48px 36px 0", zIndex: 1 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <HexIcon size={26} color={C.orange} />
           <span style={{ color: C.textSub, fontSize: 12, letterSpacing: "0.12em" }}>ห้องคลอด โรงพยาบาลสะบ้าย้อย</span>
         </div>
       </div>
-
-      {/* Center content */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "0 36px", zIndex: 1 }}>
         <div style={{ textAlign: "center", marginBottom: 40 }}>
           <div style={{ color: C.text, fontSize: 30, fontWeight: 700, lineHeight: 1.25 }}>ระบบเช็คสต็อก</div>
-          <div style={{ color: C.orange, fontSize: 30, fontWeight: 700, lineHeight: 1.25 }}>เวชภัณฑ์ห้องคลอด</div>
+          <div style={{ color: C.orange, fontSize: 30, fontWeight: 700, lineHeight: 1.25 }}>เวชภัณฑ์</div>
         </div>
-
-        {/* Big hexagon button */}
-        <button onClick={() => setPage("pick")} aria-label="เริ่มต้นเบิกของ"
-          style={{ position: "relative", width: 200, height: 220, border: "none", background: "none", cursor: "pointer", padding: 0 }}>
+        <button onClick={() => setPage("pick")} aria-label="เริ่มต้นเบิกของ" style={{ position: "relative", width: 200, height: 220, border: "none", background: "none", cursor: "pointer", padding: 0 }}>
           <svg width="200" height="220" viewBox="0 0 200 220" style={{ filter: "drop-shadow(0 12px 40px " + C.orange + "66)" }}>
-            <defs>
-              <linearGradient id="hexgrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={C.orangeL} />
-                <stop offset="100%" stopColor={C.orangeD} />
-              </linearGradient>
-            </defs>
+            <defs><linearGradient id="hexgrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={C.orangeL} /><stop offset="100%" stopColor={C.orangeD} /></linearGradient></defs>
             <polygon points="100,10 185,60 185,160 100,210 15,160 15,60" fill="url(#hexgrad)" />
           </svg>
           <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, pointerEvents: "none" }}>
@@ -325,18 +333,54 @@ function App() {
         </button>
         <div style={{ color: C.textMute, fontSize: 12, marginTop: 24, textAlign: "center" }}>แตะปุ่มเพื่อเลือกหมวดและเริ่มนับสต็อก</div>
       </div>
-
+      {history.length > 0 && (
+        <button onClick={() => setPage("historyView")} style={{ margin: "0 24px 12px", background: C.card, borderRadius: 14, padding: "12px 16px", border: "1px solid " + C.border, display: "flex", alignItems: "center", gap: 10, zIndex: 1, cursor: "pointer" }}>
+          <svg width="17" height="17" fill="none" stroke={C.orangeL} strokeWidth="2" viewBox="0 0 24 24"><path d="M12 8v4l3 3M3 12a9 9 0 1018 0 9 9 0 00-18 0z" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          <div style={{ flex: 1, textAlign: "left" }}>
+            <div style={{ color: C.text, fontSize: 13, fontWeight: 500 }}>ประวัติการเบิก</div>
+            <div style={{ color: C.textMute, fontSize: 11 }}>บันทึกไว้ {history.length} ครั้ง · ครั้งล่าสุด {fmtDate(history[0].date)}</div>
+          </div>
+          <svg width="18" height="18" fill="none" stroke={C.textMute} strokeWidth="2" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        </button>
+      )}
       {allNeed > 0 && (
         <div style={{ margin: "0 24px 32px", background: C.card, borderRadius: 16, padding: "14px 18px", border: "1px solid " + C.border, display: "flex", alignItems: "center", gap: 12, zIndex: 1 }}>
           <div style={{ width: 34, height: 34, background: C.danger + "22", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
             <svg width="17" height="17" fill="none" stroke={C.danger} strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" strokeLinecap="round" /></svg>
           </div>
-          <div>
-            <div style={{ color: C.text, fontSize: 13, fontWeight: 500 }}>มีรายการที่ต้องเบิก</div>
-            <div style={{ color: C.danger, fontSize: 12 }}>{allNeed} รายการยังไม่ครบตามกำหนด</div>
-          </div>
+          <div><div style={{ color: C.text, fontSize: 13, fontWeight: 500 }}>มีรายการที่ต้องเบิก</div><div style={{ color: C.danger, fontSize: 12 }}>{allNeed} รายการยังไม่ครบตามกำหนด</div></div>
         </div>
       )}
+    </div>
+  );
+
+  // ═══ HISTORY VIEW ═══════════════════════════════════════════════
+  if (page === "historyView") return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: C.bg, overflowY: "auto" }}>
+      <div style={{ background: C.card, borderBottom: "1px solid " + C.border, padding: "14px 18px", position: "sticky", top: 0, zIndex: 10, display: "flex", alignItems: "center", gap: 10 }}>
+        <button onClick={() => setPage("home")} style={{ width: 36, height: 36, background: C.cardEl, border: "none", borderRadius: 10, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <svg width="16" height="16" fill="none" stroke={C.text} strokeWidth="2" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        </button>
+        <div style={{ color: C.text, fontWeight: 600, fontSize: 15 }}>ประวัติการเบิก</div>
+      </div>
+      <div style={{ flex: 1, padding: 16 }}>
+        {history.length === 0 ? <div style={{ textAlign: "center", color: C.textMute, fontSize: 13, padding: 40 }}>ยังไม่มีประวัติ</div> :
+          history.map((batch, bi) => (
+            <div key={bi} style={{ background: C.card, borderRadius: 14, padding: 16, marginBottom: 12, border: "1px solid " + C.border }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid " + C.border }}>
+                <div style={{ color: C.text, fontSize: 13, fontWeight: 600 }}>{fmtDate(batch.date)}</div>
+                <div style={{ color: C.orangeL, fontSize: 11 }}>{batch.items.length} รายการ</div>
+              </div>
+              {batch.items.map((it, ii) => (
+                <div key={ii} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 12 }}>
+                  <span style={{ color: C.textSub }}>{CAT_META[it.cat] ? CAT_META[it.cat].label + " · " : ""}{it.name}</span>
+                  <span style={{ color: C.text, fontWeight: 600 }}>{it.qty} {it.unit}</span>
+                </div>
+              ))}
+            </div>
+          ))
+        }
+      </div>
     </div>
   );
 
@@ -349,37 +393,195 @@ function App() {
           <svg width="17" height="17" fill="none" stroke={C.text} strokeWidth="2" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
       </div>
-
       <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 24px 40px", zIndex: 1 }}>
         <div style={{ marginBottom: 28, textAlign: "center" }}>
           <div style={{ color: C.text, fontSize: 24, fontWeight: 700 }}>เลือกหมวดการเบิก</div>
           <div style={{ color: C.textMute, fontSize: 13, marginTop: 6 }}>เลือกหมวดที่ต้องการทำรายการ</div>
         </div>
-
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           {CATS.map(cat => {
             const meta = CAT_META[cat];
             const list = items.filter(it => it.cat === cat);
             const need = list.filter(it => it.count < it.req).length;
             return (
-              <button key={cat} onClick={() => { setActiveCat(cat); setSearch(""); setPage("items"); }}
-                style={{ display: "flex", alignItems: "center", gap: 16, background: C.card, border: "1px solid " + C.border, borderLeft: "4px solid " + meta.color, borderRadius: 18, padding: "18px 20px", cursor: "pointer", textAlign: "left" }}>
+              <button key={cat} onClick={() => { setActiveCat(cat); setSearch(""); setPage("items"); }} style={{ display: "flex", alignItems: "center", gap: 16, background: C.card, border: "1px solid " + C.border, borderLeft: "4px solid " + meta.color, borderRadius: 18, padding: "18px 20px", cursor: "pointer", textAlign: "left" }}>
                 <div style={{ width: 52, height: 52, borderRadius: 15, background: meta.color + "1E", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   <svg width="26" height="26" fill="none" stroke={meta.color} strokeWidth="1.8" viewBox="0 0 24 24"><path d={meta.icon} strokeLinecap="round" strokeLinejoin="round" /></svg>
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ color: C.text, fontSize: 18, fontWeight: 600 }}>{meta.label}</div>
                   <div style={{ color: C.textMute, fontSize: 12, marginTop: 2 }}>{meta.desc}</div>
-                  <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
-                    <span style={{ color: C.textSub, fontSize: 11 }}>{list.length} รายการ</span>
-                    {need > 0 && <span style={{ color: C.danger, fontSize: 11, fontWeight: 600 }}>· ต้องเบิก {need}</span>}
-                  </div>
+                  <div style={{ display: "flex", gap: 10, marginTop: 8 }}><span style={{ color: C.textSub, fontSize: 11 }}>{list.length} รายการ</span>{need > 0 && <span style={{ color: C.danger, fontSize: 11, fontWeight: 600 }}>· ต้องเบิก {need}</span>}</div>
                 </div>
                 <svg width="20" height="20" fill="none" stroke={C.textMute} strokeWidth="2" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </button>
             );
           })}
         </div>
+        <button onClick={() => openExport("all")} style={{ marginTop: 20, background: "none", border: "1px dashed " + C.border, borderRadius: 14, padding: "14px", color: C.orangeL, fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          <svg width="16" height="16" fill="none" stroke={C.orangeL} strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          สรุป & ส่งออกทุกหมวด
+        </button>
+      </div>
+    </div>
+  );
+
+  // ═══ EXPORT / SUMMARY ═══════════════════════════════════════════
+  if (page === "export") {
+    const summary = buildSummary(exportScope);
+    const totalQty = summary.reduce((s, g) => s + g.items.reduce((a, b) => a + b.qty, 0), 0);
+    const totalItems = summary.reduce((s, g) => s + g.items.length, 0);
+    const scopeLabel = exportScope === "all" ? "ทุกหมวด" : CAT_META[exportScope].label;
+    const dateStr = fmtDate(new Date());
+
+    const exportPDF = () => window.print();
+    const exportImage = async () => {
+      if (!summaryRef.current || !window.html2canvas) { alert("ไม่สามารถสร้างรูปได้"); return; }
+      const canvas = await window.html2canvas(summaryRef.current, { backgroundColor: "#ffffff", scale: 2 });
+      const a = document.createElement("a");
+      a.href = canvas.toDataURL("image/png");
+      a.download = "สรุปการเบิก_" + scopeLabel + "_" + new Date().toISOString().slice(0,10) + ".png";
+      a.click();
+    };
+    const exportCSV = () => {
+      let csv = "\uFEFF";
+      csv += "หน่วยงาน,ห้องคลอด รพ.สะบ้าย้อย\n";
+      csv += "สรุปการเบิก," + scopeLabel + "\n";
+      csv += "วันที่," + dateStr + "\n\n";
+      csv += "หมวด,รายการ,จำนวนที่เบิก,หน่วย\n";
+      summary.forEach(g => g.items.forEach(it => { csv += [CAT_META[g.cat].label, '"'+it.name+'"', it.qty, it.unit].join(",") + "\n"; }));
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = "สรุปการเบิก_" + scopeLabel + "_" + new Date().toISOString().slice(0,10) + ".csv"; a.click(); URL.revokeObjectURL(url);
+    };
+
+    const confirmSave = async () => {
+      if (totalItems === 0) { alert("ไม่มีรายการที่ต้องเบิก"); return; }
+      setSaving(true);
+      const batch = {
+        date: new Date().toISOString(),
+        org: "ห้องคลอด รพ.สะบ้าย้อย",
+        scope: scopeLabel,
+        items: summary.flatMap(g => g.items.map(it => ({ id: it.id, cat: g.cat, name: it.name, unit: it.unit, qty: it.qty }))),
+      };
+      // 1) save locally (immediate, reliable)
+      const nextHist = [batch, ...history];
+      setHistory(nextHist); saveHistory(nextHist);
+      // 2) post to Google Sheet (best-effort)
+      const res = await postToSheet({ action: "save", ...batch });
+      setSaving(false);
+      setSavedInfo({ count: batch.items.length, qty: totalQty, sheet: res.ok, noUrl: res.reason === "no-url" });
+      setPage("saved");
+    };
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", background: C.bg, overflowY: "auto" }}>
+        <div style={{ background: C.card, borderBottom: "1px solid " + C.border, padding: "14px 18px", position: "sticky", top: 0, zIndex: 10, display: "flex", alignItems: "center", gap: 10 }}>
+          <button onClick={() => setPage(activeCat ? "items" : "pick")} style={{ width: 36, height: 36, background: C.cardEl, border: "none", borderRadius: 10, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width="16" height="16" fill="none" stroke={C.text} strokeWidth="2" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </button>
+          <div><div style={{ color: C.text, fontWeight: 600, fontSize: 15 }}>สรุปการเบิก</div><div style={{ color: C.textSub, fontSize: 11 }}>{scopeLabel} · {totalItems} รายการ</div></div>
+        </div>
+
+        {/* Scope switch */}
+        <div style={{ display: "flex", gap: 6, padding: "12px 16px 4px", flexWrap: "wrap" }}>
+          {["all", ...CATS].map(sc => {
+            const active = exportScope === sc;
+            const lbl = sc === "all" ? "ทุกหมวด" : CAT_META[sc].label;
+            return <button key={sc} onClick={() => setExportScope(sc)} style={{ padding: "6px 14px", borderRadius: 20, border: active ? "none" : "1px solid " + C.border, background: active ? C.orange : C.cardEl, color: active ? "#fff" : C.textSub, fontSize: 12, fontWeight: active ? 600 : 400, cursor: "pointer" }}>{lbl}</button>;
+          })}
+        </div>
+
+        {/* Summary sheet (also the image capture target) */}
+        <div style={{ flex: 1, padding: "8px 16px 16px" }}>
+          <div ref={summaryRef} style={{ background: "#fff", borderRadius: 14, padding: "20px", color: "#111" }}>
+            <div style={{ borderBottom: "2px solid #E8673A", paddingBottom: 10, marginBottom: 14 }}>
+              <div style={{ fontSize: 17, fontWeight: 700, color: "#111" }}>ใบสรุปการเบิกเวชภัณฑ์</div>
+              <div style={{ fontSize: 12, color: "#555", marginTop: 2 }}>ห้องคลอด โรงพยาบาลสะบ้าย้อย</div>
+              <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>หมวด: {scopeLabel} · วันที่ {dateStr}</div>
+            </div>
+            {totalItems === 0 ? (
+              <div style={{ textAlign: "center", color: "#999", fontSize: 13, padding: "24px 0" }}>ไม่มีรายการที่ต้องเบิกในหมวดนี้</div>
+            ) : summary.map(g => (
+              <div key={g.cat} style={{ marginBottom: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 6 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 2, background: CAT_META[g.cat].color, display: "inline-block" }} />
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "#111" }}>{CAT_META[g.cat].label}</span>
+                  <span style={{ fontSize: 11, color: "#888" }}>({g.items.length} รายการ)</span>
+                </div>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead><tr style={{ background: "#f4f4f4" }}>
+                    <th style={{ textAlign: "left", padding: "5px 8px", border: "1px solid #ddd", width: "10%" }}>#</th>
+                    <th style={{ textAlign: "left", padding: "5px 8px", border: "1px solid #ddd" }}>รายการ</th>
+                    <th style={{ textAlign: "center", padding: "5px 8px", border: "1px solid #ddd", width: "26%" }}>จำนวนที่เบิก</th>
+                  </tr></thead>
+                  <tbody>
+                    {g.items.map((it, i) => (
+                      <tr key={it.id}>
+                        <td style={{ padding: "5px 8px", border: "1px solid #eee", textAlign: "center", color: "#666" }}>{i+1}</td>
+                        <td style={{ padding: "5px 8px", border: "1px solid #eee", color: "#111" }}>{it.name}</td>
+                        <td style={{ padding: "5px 8px", border: "1px solid #eee", textAlign: "center", fontWeight: 700, color: "#E8673A" }}>{it.qty} {it.unit}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+            {totalItems > 0 && (
+              <div style={{ marginTop: 8, paddingTop: 10, borderTop: "1px dashed #ccc", display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 700, color: "#111" }}>
+                <span>รวมทั้งหมด</span><span>{totalItems} รายการ · {totalQty} หน่วย</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Export format buttons */}
+        <div style={{ padding: "0 16px 8px" }}>
+          <div style={{ color: C.textSub, fontSize: 12, marginBottom: 8 }}>เลือกรูปแบบการส่งออก</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+            {[
+              { label: "PDF", sub: "พิมพ์/บันทึก", icon: "M9 13h6M9 17h3M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z", fn: exportPDF },
+              { label: "รูปภาพ", sub: "PNG", icon: "M3 5a2 2 0 012-2h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5zM8.5 10a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM21 15l-5-5L5 21", fn: exportImage },
+              { label: "CSV", sub: "Excel", icon: "M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3", fn: exportCSV },
+            ].map(b => (
+              <button key={b.label} onClick={b.fn} disabled={totalItems===0} style={{ background: C.card, border: "1px solid " + C.border, borderRadius: 14, padding: "14px 8px", cursor: totalItems===0?"not-allowed":"pointer", opacity: totalItems===0?0.4:1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                <svg width="22" height="22" fill="none" stroke={C.orangeL} strokeWidth="1.8" viewBox="0 0 24 24"><path d={b.icon} strokeLinecap="round" strokeLinejoin="round" /></svg>
+                <div style={{ color: C.text, fontSize: 13, fontWeight: 600 }}>{b.label}</div>
+                <div style={{ color: C.textMute, fontSize: 10 }}>{b.sub}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Confirm save */}
+        <div style={{ padding: "8px 16px 24px" }}>
+          <button onClick={confirmSave} disabled={saving || totalItems===0} style={{ width: "100%", padding: "16px", borderRadius: 16, border: "none", background: totalItems===0 ? C.cardEl : "linear-gradient(135deg," + C.orangeL + "," + C.orangeD + ")", color: "#fff", fontSize: 16, fontWeight: 700, cursor: (saving||totalItems===0)?"not-allowed":"pointer", opacity: (saving||totalItems===0)?0.6:1, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, boxShadow: totalItems===0?"none":"0 6px 24px " + C.orange + "55" }}>
+            {saving ? (<><span style={{ width: 18, height: 18, border: "2px solid rgba(255,255,255,0.4)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />กำลังบันทึก...</>) : (<><svg width="18" height="18" fill="none" stroke="#fff" strokeWidth="2.2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" /></svg>ยืนยันบันทึกการเบิก</>)}
+          </button>
+          <div style={{ color: C.textMute, fontSize: 11, textAlign: "center", marginTop: 8 }}>บันทึกแล้วข้อมูลจะถูกส่งเข้า Google Sheet และแสดงเป็นประวัติครั้งถัดไป</div>
+        </div>
+      </div>
+    );
+  }
+
+  // ═══ SAVED CONFIRMATION ═════════════════════════════════════════
+  if (page === "saved") return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: C.bg, alignItems: "center", justifyContent: "center", padding: 32, textAlign: "center" }}>
+      <div style={{ width: 90, height: 90, borderRadius: "50%", background: C.success + "22", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20, animation: "popIn 0.4s cubic-bezier(0.34,1.56,0.64,1)" }}>
+        <svg width="46" height="46" fill="none" stroke={C.success} strokeWidth="3" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      </div>
+      <div style={{ color: C.text, fontSize: 22, fontWeight: 700, marginBottom: 8 }}>บันทึกการเบิกเรียบร้อย</div>
+      <div style={{ color: C.textSub, fontSize: 14, marginBottom: 4 }}>บันทึก {savedInfo?.count} รายการ · รวม {savedInfo?.qty} หน่วย</div>
+      {savedInfo?.noUrl ? (
+        <div style={{ color: C.warning, fontSize: 12, marginBottom: 24, maxWidth: 300, lineHeight: 1.6 }}>⚠ ยังไม่ได้เชื่อม Google Sheet<br />(บันทึกในเครื่องแล้ว — ตั้งค่า URL ในไฟล์เพื่อส่งเข้าชีต)</div>
+      ) : savedInfo?.sheet ? (
+        <div style={{ color: C.success, fontSize: 12, marginBottom: 24 }}>✓ ส่งเข้า Google Sheet แล้ว</div>
+      ) : (
+        <div style={{ color: C.warning, fontSize: 12, marginBottom: 24, maxWidth: 300, lineHeight: 1.6 }}>บันทึกในเครื่องแล้ว · การส่งเข้าชีตอาจไม่สำเร็จ ตรวจสอบการเชื่อมต่อ</div>
+      )}
+      <div style={{ display: "flex", gap: 10, width: "100%", maxWidth: 300 }}>
+        <button onClick={() => setPage("historyView")} style={{ flex: 1, padding: 14, borderRadius: 14, border: "1px solid " + C.border, background: C.card, color: C.text, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>ดูประวัติ</button>
+        <button onClick={() => { setPage("home"); }} style={{ flex: 1, padding: 14, borderRadius: 14, border: "none", background: C.orange, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>กลับหน้าแรก</button>
       </div>
     </div>
   );
@@ -394,7 +596,6 @@ function App() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: C.bg, overflowY: "auto" }}>
-      {/* Header */}
       <div style={{ background: C.card, borderBottom: "1px solid " + C.border, borderTop: "3px solid " + meta.color, padding: "14px 18px", flexShrink: 0, position: "sticky", top: 0, zIndex: 10 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -402,15 +603,13 @@ function App() {
               <svg width="16" height="16" fill="none" stroke={C.text} strokeWidth="2" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
             <div>
-              <div style={{ color: C.text, fontWeight: 600, fontSize: 15, display: "flex", alignItems: "center", gap: 7 }}>
-                <span style={{ width: 8, height: 8, borderRadius: "50%", background: meta.color, display: "inline-block" }} />{meta.label}
-              </div>
+              <div style={{ color: C.text, fontWeight: 600, fontSize: 15, display: "flex", alignItems: "center", gap: 7 }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: meta.color, display: "inline-block" }} />{meta.label}</div>
               <div style={{ color: C.textSub, fontSize: 11, marginTop: 1 }}>{totalCat} รายการ{needCat > 0 && <span style={{ color: C.danger, marginLeft: 6 }}>· ต้องเบิก {needCat}</span>}</div>
             </div>
           </div>
           <div style={{ display: "flex", gap: 6 }}>
-            <button onClick={() => exportCSV(activeCat)} style={{ padding: "6px 12px", background: C.cardEl, border: "1px solid " + C.border, borderRadius: 8, cursor: "pointer", color: meta.color, fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
-              <svg width="12" height="12" fill="none" stroke={meta.color} strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            <button onClick={() => openExport(activeCat)} style={{ padding: "6px 12px", background: C.orange, border: "none", borderRadius: 8, cursor: "pointer", color: "#fff", fontSize: 11, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
+              <svg width="12" height="12" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" strokeLinecap="round" strokeLinejoin="round" /></svg>
               ส่งออก
             </button>
             <button onClick={() => resetCat(activeCat)} style={{ padding: "6px 12px", background: C.cardEl, border: "1px solid " + C.border, borderRadius: 8, cursor: "pointer", color: C.textSub, fontSize: 11 }}>รีเซ็ต</button>
@@ -422,71 +621,59 @@ function App() {
         </div>
       </div>
 
-      {/* Summary banner */}
       {needCat > 0 && (
-        <div style={{ margin: "12px 16px 0", background: "linear-gradient(135deg, " + meta.color + "CC, " + meta.color + "99)", borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 10 }}>
+        <div onClick={() => openExport(activeCat)} style={{ margin: "12px 16px 0", background: "linear-gradient(135deg, " + meta.color + "CC, " + meta.color + "99)", borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
           <svg width="18" height="18" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          <div style={{ flex: 1, color: "#fff", fontSize: 12, fontWeight: 600 }}>สรุปยอดที่ต้องเบิก · {meta.label}</div>
+          <div style={{ flex: 1, color: "#fff", fontSize: 12, fontWeight: 600 }}>สรุปยอด & ส่งออก · {meta.label}</div>
           <div style={{ background: "rgba(0,0,0,0.28)", color: "#fff", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 20 }}>ต้องเบิก {needCat}</div>
         </div>
       )}
 
-      {/* Progress */}
       <div style={{ padding: "10px 16px 4px", display: "flex", alignItems: "center", gap: 8 }}>
-        <div style={{ flex: 1, height: 4, background: C.cardEl, borderRadius: 2, overflow: "hidden" }}>
-          <div style={{ height: "100%", width: (totalCat ? (doneCat/totalCat)*100 : 0) + "%", background: meta.color, borderRadius: 2, transition: "width 0.3s" }} />
-        </div>
+        <div style={{ flex: 1, height: 4, background: C.cardEl, borderRadius: 2, overflow: "hidden" }}><div style={{ height: "100%", width: (totalCat ? (doneCat/totalCat)*100 : 0) + "%", background: meta.color, borderRadius: 2, transition: "width 0.3s" }} /></div>
         <span style={{ color: C.textMute, fontSize: 10 }}>{doneCat}/{totalCat}</span>
       </div>
 
-      {/* Items */}
       <div style={{ flex: 1, padding: "8px 16px 24px" }}>
-        {filtered.length === 0 ? (
-          <div style={{ textAlign: "center", color: C.textMute, fontSize: 13, padding: "40px 0" }}>ไม่พบรายการ</div>
-        ) : filtered.map(item => {
-          const st = getStatus(item.count, item.req);
-          const pct = Math.min(1, item.count / item.req);
-          const need = Math.max(0, item.req - item.count);
-          const stColor = st === "empty" ? C.danger : st === "low" ? C.warning : C.success;
-          return (
-            <div key={item.id} onClick={() => setModalId(item.id)}
-              style={{ background: C.card, borderRadius: 14, padding: "14px 16px", marginBottom: 10, border: "1px solid " + (st === "empty" ? C.danger + "40" : st === "low" ? C.warning + "30" : C.border), cursor: "pointer" }}>
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
-                <div style={{ flex: 1, paddingRight: 8 }}>
-                  <div style={{ color: C.text, fontSize: 14, fontWeight: 500, lineHeight: 1.4 }}>{item.name}</div>
-                  <div style={{ color: C.textMute, fontSize: 11, marginTop: 3 }}>{meta.label} · ต้องมีในคลัง {item.req} {item.unit}</div>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ background: stColor + "22", color: stColor, fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>{st === "ok" ? "ครบ" : st === "low" ? "ไม่พอ" : "หมด"}</span>
-                  <button onClick={(e) => { e.stopPropagation(); removeItem(item.id); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, color: C.textMute }}>
-                    <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2" /></svg>
-                  </button>
-                </div>
-              </div>
-              <div style={{ height: 3, background: C.cardEl, borderRadius: 2, marginBottom: 12, overflow: "hidden" }}>
-                <div style={{ height: "100%", width: (pct*100) + "%", background: stColor, borderRadius: 2, transition: "width 0.2s" }} />
-              </div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <button onClick={(e) => { e.stopPropagation(); changeCount(item.id, -1); }} style={{ width: 34, height: 34, borderRadius: 10, border: "1px solid " + C.border, background: C.cardEl, color: C.text, fontSize: 18, cursor: "pointer" }}>−</button>
-                  <span style={{ color: C.text, fontSize: 16, fontWeight: 600, minWidth: 24, textAlign: "center" }}>{item.count}</span>
-                  <button onClick={(e) => { e.stopPropagation(); changeCount(item.id, 1); }} style={{ width: 34, height: 34, borderRadius: 10, border: "1px solid " + C.border, background: C.cardEl, color: C.text, fontSize: 18, cursor: "pointer" }}>+</button>
-                  <span style={{ color: C.textMute, fontSize: 12 }}>{item.unit}</span>
-                </div>
-                {need > 0 && (
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ color: C.textMute, fontSize: 10 }}>ต้องเบิก</div>
-                    <div style={{ color: meta.color, fontSize: 16, fontWeight: 700 }}>{need} <span style={{ fontSize: 11 }}>{item.unit}</span></div>
+        {filtered.length === 0 ? <div style={{ textAlign: "center", color: C.textMute, fontSize: 13, padding: "40px 0" }}>ไม่พบรายการ</div> :
+          filtered.map(item => {
+            const st = getStatus(item.count, item.req);
+            const pct = Math.min(1, item.count / item.req);
+            const need = Math.max(0, item.req - item.count);
+            const stColor = st === "empty" ? C.danger : st === "low" ? C.warning : C.success;
+            const lw = lastWithdrawMap[item.id];
+            return (
+              <div key={item.id} onClick={() => setModalId(item.id)} style={{ background: C.card, borderRadius: 14, padding: "14px 16px", marginBottom: 10, border: "1px solid " + (st === "empty" ? C.danger + "40" : st === "low" ? C.warning + "30" : C.border), cursor: "pointer" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
+                  <div style={{ flex: 1, paddingRight: 8 }}>
+                    <div style={{ color: C.text, fontSize: 14, fontWeight: 500, lineHeight: 1.4 }}>{item.name}</div>
+                    <div style={{ color: C.textMute, fontSize: 11, marginTop: 3 }}>{meta.label} · ต้องมีในคลัง {item.req} {item.unit}{lw && <span style={{ color: C.orangeL }}> · เบิกก่อน {lw.qty}</span>}</div>
                   </div>
-                )}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ background: stColor + "22", color: stColor, fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 6 }}>{st === "ok" ? "ครบ" : st === "low" ? "ไม่พอ" : "หมด"}</span>
+                    <button onClick={(e) => { e.stopPropagation(); removeItem(item.id); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, color: C.textMute }}>
+                      <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2" /></svg>
+                    </button>
+                  </div>
+                </div>
+                <div style={{ height: 3, background: C.cardEl, borderRadius: 2, marginBottom: 12, overflow: "hidden" }}><div style={{ height: "100%", width: (pct*100) + "%", background: stColor, borderRadius: 2, transition: "width 0.2s" }} /></div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <button onClick={(e) => { e.stopPropagation(); changeCount(item.id, -1); }} style={{ width: 34, height: 34, borderRadius: 10, border: "1px solid " + C.border, background: C.cardEl, color: C.text, fontSize: 18, cursor: "pointer" }}>−</button>
+                    <span style={{ color: C.text, fontSize: 16, fontWeight: 600, minWidth: 24, textAlign: "center" }}>{item.count}</span>
+                    <button onClick={(e) => { e.stopPropagation(); changeCount(item.id, 1); }} style={{ width: 34, height: 34, borderRadius: 10, border: "1px solid " + C.border, background: C.cardEl, color: C.text, fontSize: 18, cursor: "pointer" }}>+</button>
+                    <span style={{ color: C.textMute, fontSize: 12 }}>{item.unit}</span>
+                  </div>
+                  {need > 0 && <div style={{ textAlign: "right" }}><div style={{ color: C.textMute, fontSize: 10 }}>ต้องเบิก</div><div style={{ color: meta.color, fontSize: 16, fontWeight: 700 }}>{need} <span style={{ fontSize: 11 }}>{item.unit}</span></div></div>}
+                </div>
+                <div style={{ textAlign: "center", marginTop: 8, color: C.textMute, fontSize: 10 }}>แตะที่การ์ดเพื่อเปิดปุ่มนับใหญ่</div>
               </div>
-              <div style={{ textAlign: "center", marginTop: 8, color: C.textMute, fontSize: 10 }}>แตะที่การ์ดเพื่อเปิดปุ่มนับใหญ่</div>
-            </div>
-          );
-        })}
+            );
+          })
+        }
       </div>
 
-      <CountModal item={modalItem} onClose={() => setModalId(null)} onChange={changeCount} />
+      <CountModal item={modalItem} lastW={modalItem ? lastWithdrawMap[modalItem.id] : null} onClose={() => setModalId(null)} onChange={changeCount} />
     </div>
   );
 }
