@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>เช็คสต็อกเวชภัณฑ์ | ห้องคลอด รพ.สะบ้าย้อย Version 09.38</title>
+<title>เช็คสต็อกเวชภัณฑ์ | ห้องคลอด รพ.สะบ้าย้อย</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
@@ -284,11 +284,13 @@ function App() {
   const [requester, setRequester] = useState(() => { try { return localStorage.getItem("withdraw-requester") || ""; } catch { return ""; } });
 
   // Last withdrawal per item id (from history, most recent)
+  // จับคู่ด้วย "หมวด|ชื่อ" เพื่อให้ใช้ได้ทั้งข้อมูลในเครื่องและที่ดึงจาก Google Sheet
+  const keyOf = (cat, name) => (cat || "") + "|" + (name || "");
   const lastWithdrawMap = React.useMemo(() => {
     const m = {};
-    history.forEach(batch => batch.items.forEach(it => {
-      if (it.id == null) return;
-      if (!m[it.id] || new Date(batch.date) > new Date(m[it.id].date)) m[it.id] = { qty: it.qty, date: batch.date, by: batch.requester || "" };
+    history.forEach(batch => (batch.items || []).forEach(it => {
+      const k = keyOf(it.cat, it.name);
+      if (!m[k] || new Date(batch.date) > new Date(m[k].date)) m[k] = { qty: it.qty, date: batch.date, by: batch.requester || "" };
     }));
     return m;
   }, [history]);
@@ -766,7 +768,7 @@ function App() {
             const pct = Math.min(1, item.count / item.req);
             const need = Math.max(0, item.req - item.count);
             const stColor = st === "empty" ? C.danger : st === "low" ? C.warning : C.success;
-            const lw = lastWithdrawMap[item.id];
+            const lw = lastWithdrawMap[keyOf(item.cat, item.name)];
             return (
               <div key={item.id} onClick={() => setModalId(item.id)} style={{ background: C.card, borderRadius: 14, padding: "14px 16px", marginBottom: 10, border: "1px solid " + (st === "empty" ? C.danger + "40" : st === "low" ? C.warning + "30" : C.border), cursor: "pointer" }}>
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
@@ -811,7 +813,7 @@ function App() {
         }
       </div>
 
-      <CountModal item={modalItem} lastW={modalItem ? lastWithdrawMap[modalItem.id] : null} onClose={() => setModalId(null)} onChange={changeCount} />
+      <CountModal item={modalItem} lastW={modalItem ? lastWithdrawMap[keyOf(modalItem.cat, modalItem.name)] : null} onClose={() => setModalId(null)} onChange={changeCount} />
     </div>
   );
 }
