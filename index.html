@@ -36,7 +36,7 @@ const { useState, useEffect, useCallback, useRef } = React;
 const CONFIG = {
   // วาง URL ของ Google Apps Script Web App (ลงท้าย /exec) ตรงนี้ก็ได้
   // หรือกรอกผ่านหน้า "ตั้งค่า" ในแอป (เก็บใน localStorage) ก็ได้เช่นกัน
-  GOOGLE_SCRIPT_URL: "",
+  GOOGLE_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbyQhVhEzywdoc069kGhEckZ23FN_ZTSShTiqinvzzh-Qor4DEyqzS1gohWMeE7AB6M02A/exec",
 };
 const SETTINGS_KEY = "withdraw-settings-v1";
 const getScriptUrl = () => { try { return (JSON.parse(localStorage.getItem(SETTINGS_KEY)||"{}").url) || CONFIG.GOOGLE_SCRIPT_URL || ""; } catch { return CONFIG.GOOGLE_SCRIPT_URL || ""; } };
